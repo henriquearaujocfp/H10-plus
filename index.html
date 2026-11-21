@@ -235,6 +235,17 @@
   </section>
 
 
+  <section class="card hidden" id="wearCard">
+    <h2>Relógio (Galaxy Watch)</h2>
+    <p id="wearStatus" class="msg">Verificando o relógio…</p>
+    <div class="row">
+      <button id="wearSyncBtn" class="primary">Sincronizar treinos do relógio</button>
+      <button id="wearApkBtn">Baixar app do relógio</button>
+    </div>
+    <p id="wearMsg" class="msg"></p>
+    <p class="msg">No relógio: abra o Monitor H10, escolha Cardio ou Musculação e toque em Iniciar. Ele conecta direto na cinta, grava FC, RR e GPS e, ao encerrar (segurando 5 s), mede 60 s de recuperação. Os treinos chegam aqui quando o relógio volta a ficar perto do celular; as zonas atuais são enviadas ao relógio automaticamente.</p>
+  </section>
+
   <section class="card hidden" id="nightCard">
     <h2>Noite (Galaxy Watch)</h2>
     <div id="nightBody"></div>
@@ -482,7 +493,7 @@
   $('fcmax').value = store.get('fcmax', '179');
   $('fcrep').value = store.get('fcrep', '60');
   const fcmax = () => Math.max(100, +$('fcmax').value || 179);
-  $('fcmax').addEventListener('change', () => { store.set('fcmax', $('fcmax').value); renderZones(); draw(); if (typeof renderZInfo === 'function') renderZInfo(); });
+  $('fcmax').addEventListener('change', () => { store.set('fcmax', $('fcmax').value); renderZones(); draw(); if (typeof renderZInfo === 'function') renderZInfo(); if (typeof pushWearConfig === 'function') pushWearConfig(); });
   $('fcrep').addEventListener('change', () => store.set('fcrep', $('fcrep').value));
 
   // ---------- checagem de ambiente ----------
@@ -1123,6 +1134,13 @@
     $('evalBody').innerHTML = `
       ${w.recovered ? '<p class="msg">Treino recuperado após o app fechar: o fim registrado é o último dado salvo.</p>' : ''}
       ${w.source === 'cinta' ? '<p class="msg">Importado da memória da cinta (intervalos RR batimento a batimento). Sem recuperação da FC medida.</p>' : ''}
+      ${w.source === 'relogio' ? '<p class="msg">Gravado no Galaxy Watch com o H10.</p>' : ''}
+      ${w.gps ? `<section class="card"><h2>Percurso (GPS do relógio)</h2>
+        <div class="grid"><div class="stat"><b>${(w.gps.dist / 1000).toFixed(2).replace('.', ',')}</b><span>km</span></div>
+        <div class="stat"><b>${fmtPace(w.gps.pace)}</b><span>Ritmo médio</span></div>
+        <div class="stat"><b>${w.gps.dist && w.gps.dur ? (w.gps.dist / w.gps.dur * 3.6).toFixed(1).replace('.', ',') : '--'}</b><span>km/h médio</span></div></div>
+        ${w.gps.splits && w.gps.splits.length ? `<table style="margin-top:8px"><tr><th>Km</th><th>Parcial</th></tr>${w.gps.splits.map((t, i) => `<tr><td>${i + 1}</td><td>${fmtPace(t)}</td></tr>`).join('')}</table>` : ''}
+        <p class="msg">Distância recalculada só com pontos de precisão até 25 m; ritmo médio pelo tempo total, incluindo paradas.</p></section>` : ''}
       <section class="card">
         <h2>Dados medidos</h2>
         <div class="grid">
@@ -1597,7 +1615,7 @@
     store.set('zvt1', vt1); store.set('zvt2', vt2); store.set('zsrc', src); store.set('zmode', 'limiar');
     if (hrmax) { store.set('fcmaxMed', hrmax); $('fcmax').value = hrmax; store.set('fcmax', hrmax); }
     $('zmode').value = 'limiar';
-    renderZInfo(); renderZones(); draw(); renderTestCard();
+    renderZInfo(); renderZones(); draw(); renderTestCard(); pushWearConfig();
   }
   function renderZInfo(){
     const c = curCfgZ(), zb = curZB(), fm = fcmax();
@@ -1922,6 +1940,80 @@
     return f.length ? `<p class="status-line bad">Noite (relógio): ${f.join('; ')}.</p>` : (nightZ(today, 'hr') ? '<p class="status-line">Noite (relógio): marcadores dentro do normal.</p>' : '');
   }
 
+  // ---------- relógio (Galaxy Watch) ----------
+  const WEAR_APK = 'https://github.com/henriquearaujocfp/H10-plus/releases/download/android-latest/h10plus-wear.apk';
+  let wearImported = [];
+  function pushWearConfig(){
+    if (!NATIVE || !NATIVE.wearConfig) return;
+    try { NATIVE.wearConfig(JSON.stringify({zb: curZB(), fcmax: fcmax()})); } catch (e) {}
+  }
+  function wearSync(){
+    if (!NATIVE || !NATIVE.wearSync) return;
+    wearImported = [];
+    $('wearMsg').textContent = 'Buscando treinos no relógio…';
+    NATIVE.wearSync();
+  }
+  function haversine(a, b){
+    const R = 6371000, toR = x => x * Math.PI / 180;
+    const dLat = toR(b[1] - a[1]), dLon = toR(b[2] - a[2]);
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(toR(a[1])) * Math.cos(toR(b[1])) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+  // resumo do trajeto: distância (pontos com precisão ≤ 25 m e velocidade < 12 m/s) e parciais por km
+  function gpsSummary(pts, distWatch){
+    const good = pts.filter(p => p[4] <= 25);
+    if (good.length < 2 && !distWatch) return null;
+    let cum = 0, nextKm = 1000, lastSplitT = 0; const splits = [];
+    for (let i = 1; i < good.length; i++) {
+      const d = haversine(good[i - 1], good[i]), dt = good[i][0] - good[i - 1][0];
+      if (dt <= 0 || d / dt >= 12) continue;
+      const before = cum; cum += d;
+      while (cum >= nextKm) {
+        const frac = (nextKm - before) / d;
+        const tCross = good[i - 1][0] + frac * dt;
+        splits.push(Math.round(tCross - lastSplitT)); lastSplitT = tCross; nextKm += 1000;
+      }
+    }
+    const dist = cum > 0 ? cum : (distWatch || 0);
+    if (dist < 50) return null;
+    const lastT = good.length ? good[good.length - 1][0] : 0;
+    return {dist: Math.round(dist), dur: Math.round(lastT), pace: lastT && dist ? Math.round(lastT / dist * 1000) : null, splits};
+  }
+  const fmtPace = s => s ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}/km` : '--';
+  function importWear(js, path){
+    let o; try { o = JSON.parse(js); } catch (e) { return; }
+    const id = o.id || ('ww' + o.start);
+    if (!workouts.some(w => w.id === id)) {
+      const samples = (o.hr || []).map(([ms, b]) => [o.start + ms, b]);
+      const w = {id, type: o.type || 'cardio', fasted: false, start: o.start, end: o.end, cfg: cfgSnap(),
+                 hr: toHr1s(samples, o.start, o.end), source: 'relogio',
+                 hrr: o.hrr && o.hrr.peak && o.hrr.hr60 ? {peak: o.hrr.peak, hr60: o.hrr.hr60, drop: o.hrr.peak - o.hrr.hr60} : {fail: true}};
+      const g = gpsSummary(o.gps || [], o.dist);
+      if (g) w.gps = g;
+      workouts.push(w); saveWorkouts();
+      lastRaw = {id, rows: (o.rr || []).map(([ms, r]) => [new Date(o.start + ms).toISOString(), Math.round(60000 / r), r, '']), ecg: []};
+      wearImported.push(id);
+    }
+    NATIVE.wearAck(path);
+  }
+  function onWear(d){
+    const el = $('wearStatus');
+    switch (d.kind) {
+      case 'status':
+        el.innerHTML = d.nodes ? `Relógio conectado (${(d.names || []).join(', ')}). ${d.app ? '<span class="good">App do relógio instalado.</span>' : 'App do relógio ainda não instalado.'}`
+          : 'Nenhum relógio conectado ao celular agora.';
+        break;
+      case 'session': importWear(d.json, d.path); break;
+      case 'synced':
+        if (wearImported.length) {
+          $('wearMsg').textContent = `${wearImported.length} treino(s) importado(s) do relógio.`;
+          renderWkList(); openEval(wearImported[wearImported.length - 1]);
+        } else $('wearMsg').textContent = 'Nenhum treino novo no relógio.';
+        break;
+      case 'error': $('wearMsg').innerHTML = `<span class="bad">${d.msg}</span>`; break;
+    }
+  }
+
   // ---------- app Android (ponte nativa) ----------
   const NATIVE_APK = 'https://github.com/henriquearaujocfp/H10-plus/releases/download/android-latest/h10plus.apk';
   let memEntries = [], memData = null;
@@ -1935,6 +2027,13 @@
       else if (!hcLoading) { hcLoading = true; renderNight(); NATIVE.hcRead(14); }
     });
     NATIVE.hcStatus();
+    if (NATIVE.wearSync) {
+      $('wearCard').classList.remove('hidden');
+      $('wearSyncBtn').onclick = wearSync;
+      $('wearApkBtn').onclick = () => NATIVE.openUrl(WEAR_APK);
+      NATIVE.wearStatus(); pushWearConfig(); wearSync();
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { NATIVE.wearStatus(); wearSync(); } });
+    }
     window.__h10n = (type, d) => {
       switch (type) {
         case 'status':
@@ -1970,6 +2069,7 @@
         case 'error': showErr(d.msg); break;
         case 'rec': onMem(d); break;
         case 'hc': onHc(d); break;
+        case 'wear': onWear(d); break;
       }
     };
     // aviso de nova versão do APK (a parte web se atualiza sozinha)
@@ -2527,7 +2627,7 @@
       if (med) { applyZones(med.vt1, med.vt2, `mediana de ${med.n} teste(s)`); return; }
       $('zmode').value = 'pct'; $('zInfo').textContent = 'Ainda não há teste com VT1 e VT2 válidos. Faça o teste guiado primeiro.'; return;
     }
-    store.set('zmode', $('zmode').value); renderZInfo(); renderZones(); draw(); renderTestCard();
+    store.set('zmode', $('zmode').value); renderZInfo(); renderZones(); draw(); renderTestCard(); pushWearConfig();
   });
   $('peso').addEventListener('change', weightMsg);
   $('fStart').addEventListener('click', startWorkout);
@@ -2591,7 +2691,7 @@
   renderHistory();
 
   // ---------- app instalável (PWA) ----------
-  const APP_VERSION = '2026-11-21.5';
+  const APP_VERSION = '2026-11-21.6';
   $('appVer').textContent = APP_VERSION + (NATIVE ? ' · app Android ' + NATIVE.version() : '');
   nativeInit();
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

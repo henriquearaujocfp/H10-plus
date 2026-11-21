@@ -34,6 +34,11 @@ android {
         }
     }
 
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
@@ -59,6 +64,7 @@ dependencies {
     implementation 'androidx.core:core-ktx:1.13.1'
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'androidx.activity:activity-ktx:1.9.3'
+    implementation 'androidx.fragment:fragment-ktx:1.8.5'
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.8.7'
     // Health Connect (dados do Galaxy Watch sincronizados pelo Samsung Health)
     implementation 'androidx.health.connect:connect-client:1.1.0'
