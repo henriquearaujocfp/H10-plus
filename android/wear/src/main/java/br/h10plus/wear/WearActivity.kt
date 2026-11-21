@@ -61,6 +61,7 @@ class WearActivity : ComponentActivity() {
     private lateinit var tvHint: TextView
     private lateinit var btnSkip: TextView
     private lateinit var btnHoldTouch: TextView
+    private lateinit var btnResume: TextView
 
     private lateinit var tvStatus: TextView
     private lateinit var tvIdleHr: TextView
@@ -71,8 +72,6 @@ class WearActivity : ComponentActivity() {
     private lateinit var tvMsg: TextView
 
     private var holdAnim: ValueAnimator? = null
-    private var backDownAt = 0L
-    private val quickBacks = ArrayDeque<Long>()
     private var touchFallbackUntil = 0L
     private var lockToastUntil = 0L
     @Volatile private var ambient = false
@@ -136,7 +135,7 @@ class WearActivity : ComponentActivity() {
         tvHint = label(10f)
         btnSkip = pill("Pular recuperação", 0x66000000, size = 12f)
         btnSkip.setOnClickListener { service(WorkoutService.ACTION_SKIP_RECOVERY) }
-        btnHoldTouch = pill("■ Segure 5 s", 0xFF3A1D20.toInt(), size = 13f)
+        btnHoldTouch = pill("■ Segure 5 s para encerrar", 0xFFE5484D.toInt(), size = 14f)
         btnHoldTouch.setOnTouchListener { _, ev ->
             when (ev.actionMasked) {
                 MotionEvent.ACTION_DOWN -> startHold()
@@ -150,7 +149,10 @@ class WearActivity : ComponentActivity() {
         runCol.addView(tvBottom, LinearLayout.LayoutParams(-2, -2).apply { topMargin = -dp(2) })
         runCol.addView(tvHint, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(6) })
         runCol.addView(btnSkip, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(6) })
-        runCol.addView(btnHoldTouch, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(6) })
+        runCol.addView(btnHoldTouch, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+        btnResume = pill("Continuar treino", 0xFF21262D.toInt(), size = 13f)
+        btnResume.setOnClickListener { touchFallbackUntil = 0; cancelHold(); render() }
+        runCol.addView(btnResume, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
         runView.addView(runCol, FrameLayout.LayoutParams(-1, -1).apply { setMargins(inset, inset / 2, inset, inset / 2) })
 
         // ---------- tela inicial ----------
@@ -175,7 +177,7 @@ class WearActivity : ComponentActivity() {
         btnStart.setOnClickListener { startWorkout() }
         tvMsg = label(11f, 0xFFFFD28A.toInt())
         val tvInfo = label(10f, 0xFF8B949E.toInt()).apply {
-            text = "Durante o treino a tela fica bloqueada. Para encerrar, segure o botão Voltar por 5 s."
+            text = "Durante o treino a tela fica bloqueada. Para encerrar, aperte Voltar e segure o botão vermelho da tela por 5 s."
         }
         col.addView(tvStatus)
         col.addView(tvIdleHr, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(4) })
@@ -236,37 +238,21 @@ class WearActivity : ComponentActivity() {
         return super.dispatchGenericMotionEvent(ev)
     }
 
-    // ---------- botão Voltar: segurar 5 s para encerrar ----------
+    // ---------- botão Voltar ----------
+    // No Galaxy Watch, "segurar Voltar" é reservado ao sistema (abre a Carteira/Samsung Pay) e não chega ao app.
+    // Por isso: um toque no Voltar abre, por 10 s, o painel de encerramento; nele, segurar o botão vermelho 5 s encerra.
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.keyCode == KeyEvent.KEYCODE_BACK && inWorkout()) {
-            if (running()) {
-                when (event.action) {
-                    KeyEvent.ACTION_DOWN -> if (event.repeatCount == 0) { backDownAt = SystemClock.uptimeMillis(); startHold() }
-                    KeyEvent.ACTION_UP -> {
-                        val held = SystemClock.uptimeMillis() - backDownAt
-                        cancelHold()
-                        if (held < 150) registerQuickBack()
-                    }
-                }
-            }
+            if (running() && event.action == KeyEvent.ACTION_UP) openEndPanel()
             return true
         }
         return super.dispatchKeyEvent(event)
     }
 
-    /**
-     * Alguns relógios só avisam o app quando o botão é solto. Nesse caso, 3 toques rápidos
-     * no Voltar liberam por 10 s um botão na tela para segurar 5 s.
-     */
-    private fun registerQuickBack() {
-        val now = SystemClock.uptimeMillis()
-        quickBacks.addLast(now)
-        while (quickBacks.isNotEmpty() && now - quickBacks.first() > 2000) quickBacks.removeFirst()
-        if (quickBacks.size >= 3) {
-            quickBacks.clear()
-            touchFallbackUntil = now + 10000
-            vibrate(60)
-        }
+    private fun openEndPanel() {
+        touchFallbackUntil = SystemClock.uptimeMillis() + 10000
+        vibrate(60)
+        render()
     }
 
     private fun startHold() {
@@ -282,6 +268,7 @@ class WearActivity : ComponentActivity() {
                 override fun onAnimationEnd(animation: Animator) {
                     ring.holdProgress = 0f; ring.invalidate()
                     if (!cancelled) { vibrate(400); touchFallbackUntil = 0; service(WorkoutService.ACTION_STOP) }
+                    else touchFallbackUntil = maxOf(touchFallbackUntil, SystemClock.uptimeMillis() + 3000)
                 }
             })
             start()
@@ -404,12 +391,16 @@ class WearActivity : ComponentActivity() {
                     val pace = if (st.paceSecKm > 0 && st.paceSecKm < 1800) "  %d:%02d/km".format((st.paceSecKm / 60).toInt(), (st.paceSecKm % 60).toInt()) else ""
                     if (st.gpsFix || st.distanceM > 0) km + pace else "Aguardando GPS…"
                 } else "Musculação"
+                val panel = SystemClock.uptimeMillis() < touchFallbackUntil || ring.holdProgress > 0f
                 tvHint.text = when {
                     ring.holdProgress > 0f -> "Encerrando em ${kotlin.math.ceil((1 - ring.holdProgress) * 5).toInt()} s…"
-                    SystemClock.uptimeMillis() < lockToastUntil -> "🔒 Tela bloqueada · segure Voltar 5 s"
-                    else -> "🔒 Segure Voltar 5 s para encerrar"
+                    panel -> "Segure o botão vermelho 5 s"
+                    SystemClock.uptimeMillis() < lockToastUntil -> "🔒 Tela bloqueada · aperte Voltar para encerrar"
+                    else -> "🔒 Aperte Voltar para encerrar"
                 }
-                btnHoldTouch.visibility = if (SystemClock.uptimeMillis() < touchFallbackUntil) View.VISIBLE else View.GONE
+                btnHoldTouch.visibility = if (panel) View.VISIBLE else View.GONE
+                btnResume.visibility = if (panel && ring.holdProgress == 0f) View.VISIBLE else View.GONE
+                tvBottom.visibility = if (panel) View.GONE else View.VISIBLE
                 btnSkip.visibility = View.GONE
             }
             WorkoutState.Phase.RECOVERY -> {
@@ -417,11 +408,11 @@ class WearActivity : ComponentActivity() {
                 tvBottom.text = "${st.recoveryLeft} s · parado ou caminhando"
                 tvHint.text = ""
                 btnSkip.visibility = View.VISIBLE
-                btnHoldTouch.visibility = View.GONE
+                btnHoldTouch.visibility = View.GONE; btnResume.visibility = View.GONE; tvBottom.visibility = View.VISIBLE
             }
             else -> {
                 tvTop.text = "Salvando…"; tvBottom.text = ""; tvHint.text = ""
-                btnSkip.visibility = View.GONE; btnHoldTouch.visibility = View.GONE
+                btnSkip.visibility = View.GONE; btnHoldTouch.visibility = View.GONE; btnResume.visibility = View.GONE
             }
         }
     }
