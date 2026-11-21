@@ -39,6 +39,7 @@ class H10Bridge(private val act: MainActivity, private val web: WebView) {
     private val main = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val prefs = act.getSharedPreferences("h10", Context.MODE_PRIVATE)
+    val health = HealthBridge(act) { t, o -> emit(t, o) }
 
     private val api: PolarBleApi = PolarBleApiDefaultImpl.defaultImplementation(
         act.applicationContext,
@@ -312,7 +313,18 @@ class H10Bridge(private val act: MainActivity, private val web: WebView) {
     @JavascriptInterface
     fun openUrl(url: String) = act.openExternal(Uri.parse(url))
 
+    // ---------------- Health Connect (dados do relógio via Samsung Health) ----------------
+    @JavascriptInterface
+    fun hcStatus() = main.post { health.status() }
+
+    @JavascriptInterface
+    fun hcRequest() = main.post { health.request() }
+
+    @JavascriptInterface
+    fun hcRead(days: Int) = main.post { health.read(days) }
+
     fun shutdown() {
+        health.shutdown()
         scope.cancel()
         try { api.shutDown() } catch (_: Exception) { }
     }

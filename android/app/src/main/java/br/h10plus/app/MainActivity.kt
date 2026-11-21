@@ -23,6 +23,7 @@ import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.health.connect.client.PermissionController
 import org.json.JSONArray
 import java.io.File
 
@@ -44,6 +45,14 @@ class MainActivity : AppCompatActivity() {
 
     private val permLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { res ->
         bridge.onPermissionsResult(res.values.all { it })
+    }
+
+    private val hcPermLauncher = registerForActivityResult(PermissionController.createRequestPermissionResultContract()) { granted ->
+        bridge.health.onPermissionResult(granted)
+    }
+
+    fun requestHealthPermissions(perms: Set<String>) = runOnUiThread {
+        try { hcPermLauncher.launch(perms) } catch (e: Exception) { bridge.emitError("Health Connect: ${e.message}") }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
