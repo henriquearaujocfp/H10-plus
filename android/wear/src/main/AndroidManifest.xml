@@ -24,7 +24,7 @@
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="Monitor H10"
-        android:theme="@android:style/Theme.DeviceDefault">
+        android:theme="@style/WearTheme">
 
         <uses-library android:name="com.google.android.wearable" android:required="false" />
         <meta-data android:name="com.google.android.wearable.standalone" android:value="true" />

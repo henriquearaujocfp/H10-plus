@@ -1,8 +1,9 @@
 package br.h10plus.wear
 
 import android.Manifest
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
-import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -12,10 +13,12 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
@@ -25,35 +28,52 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.ColorUtils
 import androidx.lifecycle.lifecycleScope
 import com.google.android.gms.wearable.DataMapItem
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
-/** Tela do relógio: escolha do tipo, início, FC grande com zona e encerramento segurando 5 s. */
+/**
+ * Tela do relógio.
+ * - Antes do treino: tipo (cardio/musculação), GPS e Iniciar.
+ * - Durante o treino: fundo na cor da zona, anel de zonas na borda, FC grande, toque BLOQUEADO.
+ *   Encerrar = segurar o botão Voltar por 5 s (o mesmo botão que encerra exercícios no Samsung Health).
+ */
 class WearActivity : ComponentActivity() {
 
     private val ui = Handler(Looper.getMainLooper())
+
     private lateinit var root: FrameLayout
-    private lateinit var tvStatus: TextView
-    private lateinit var tvHr: TextView
+    private lateinit var idleView: ScrollView
+    private lateinit var runView: FrameLayout
+
+    private lateinit var ring: ZoneRingView
+    private lateinit var tvTop: TextView
     private lateinit var tvZone: TextView
-    private lateinit var tvClock: TextView
-    private lateinit var tvDist: TextView
-    private lateinit var tvMsg: TextView
-    private lateinit var idleBox: LinearLayout
+    private lateinit var tvHr: TextView
+    private lateinit var tvBottom: TextView
+    private lateinit var tvHint: TextView
+    private lateinit var btnSkip: TextView
+    private lateinit var btnHoldTouch: TextView
+
+    private lateinit var tvStatus: TextView
+    private lateinit var tvIdleHr: TextView
     private lateinit var btnCardio: TextView
     private lateinit var btnForca: TextView
     private lateinit var btnGps: TextView
     private lateinit var btnStart: TextView
-    private lateinit var holdBox: FrameLayout
-    private lateinit var holdFill: View
-    private lateinit var holdLbl: TextView
-    private lateinit var btnSkip: TextView
+    private lateinit var tvMsg: TextView
+
     private var holdAnim: ValueAnimator? = null
+    private var backDownAt = 0L
+    private val quickBacks = ArrayDeque<Long>()
+    private var touchFallbackUntil = 0L
+    private var lockToastUntil = 0L
 
     private val permLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         if (hasBle()) service(WorkoutService.ACTION_CONNECT)
@@ -76,28 +96,61 @@ class WearActivity : ComponentActivity() {
         background = GradientDrawable().apply { cornerRadius = dp(20).toFloat(); setColor(bg) }
     }
 
-    @SuppressLint("ClickableViewAccessibility")
+    private fun label(size: Float, color: Int = Color.WHITE, bold: Boolean = false) = TextView(this).apply {
+        textSize = size; setTextColor(color); gravity = Gravity.CENTER
+        if (bold) setTypeface(Typeface.DEFAULT, Typeface.BOLD)
+        includeFontPadding = false
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WorkoutState.loadConfig(this)
-        val inset = (resources.displayMetrics.widthPixels * 0.12).toInt()
+        val sw = resources.displayMetrics.widthPixels
+        val inset = (sw * 0.12).toInt()
 
         root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
-        val scroll = ScrollView(this).apply { isVerticalScrollBarEnabled = false }
+
+        // ---------- tela de treino ----------
+        runView = FrameLayout(this)
+        ring = ZoneRingView(this)
+        runView.addView(ring, FrameLayout.LayoutParams(-1, -1))
+        val runCol = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER }
+        tvTop = label(13f)
+        tvZone = label(17f, bold = true)
+        tvHr = label(10f, bold = true).apply {
+            setTextSize(TypedValue.COMPLEX_UNIT_PX, sw * 0.40f)
+            letterSpacing = -0.03f
+        }
+        tvBottom = label(14f)
+        tvHint = label(10f)
+        btnSkip = pill("Pular recuperação", 0x66000000, size = 12f)
+        btnSkip.setOnClickListener { service(WorkoutService.ACTION_SKIP_RECOVERY) }
+        btnHoldTouch = pill("■ Segure 5 s", 0xFF3A1D20.toInt(), size = 13f)
+        btnHoldTouch.setOnTouchListener { _, ev ->
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> startHold()
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> cancelHold()
+            }
+            true
+        }
+        runCol.addView(tvTop)
+        runCol.addView(tvZone, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(2) })
+        runCol.addView(tvHr, LinearLayout.LayoutParams(-2, -2).apply { topMargin = -dp(4) })
+        runCol.addView(tvBottom, LinearLayout.LayoutParams(-2, -2).apply { topMargin = -dp(2) })
+        runCol.addView(tvHint, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(6) })
+        runCol.addView(btnSkip, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(6) })
+        runCol.addView(btnHoldTouch, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(6) })
+        runView.addView(runCol, FrameLayout.LayoutParams(-1, -1).apply { setMargins(inset, inset / 2, inset, inset / 2) })
+
+        // ---------- tela inicial ----------
+        idleView = ScrollView(this).apply { isVerticalScrollBarEnabled = false }
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(inset, dp(18), inset, dp(28))
+            setPadding(inset, dp(22), inset, dp(30))
         }
-        tvStatus = TextView(this).apply { textSize = 11f; setTextColor(0xFFC9D1D9.toInt()); gravity = Gravity.CENTER }
-        tvHr = TextView(this).apply { textSize = 58f; setTextColor(Color.WHITE); gravity = Gravity.CENTER; setTypeface(Typeface.DEFAULT, Typeface.BOLD); text = "--" }
-        tvZone = pill("--", 0xFF21262D.toInt(), size = 13f)
-        tvClock = TextView(this).apply { textSize = 18f; setTextColor(Color.WHITE); gravity = Gravity.CENTER }
-        tvDist = TextView(this).apply { textSize = 13f; setTextColor(0xFFC9D1D9.toInt()); gravity = Gravity.CENTER }
-        tvMsg = TextView(this).apply { textSize = 11f; setTextColor(0xFFFFD28A.toInt()); gravity = Gravity.CENTER }
-
-        // controles de início
-        idleBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
+        tvStatus = label(12f, 0xFFC9D1D9.toInt())
+        tvIdleHr = label(40f, bold = true)
         val typeRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
         btnCardio = pill("Cardio", 0xFF58A6FF.toInt(), Color.BLACK, 12f)
         btnForca = pill("Musculação", 0xFF21262D.toInt(), size = 12f)
@@ -109,50 +162,39 @@ class WearActivity : ComponentActivity() {
         btnGps.setOnClickListener { WorkoutState.useGps = !WorkoutState.useGps; render() }
         btnStart = pill("▶ Iniciar", 0xFF2FBF71.toInt(), Color.BLACK, 16f)
         btnStart.setOnClickListener { startWorkout() }
-        idleBox.addView(typeRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
-        idleBox.addView(btnGps, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
-        idleBox.addView(btnStart, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
-
-        // botão de encerrar (segurar 5 s)
-        holdBox = FrameLayout(this).apply {
-            background = GradientDrawable().apply { cornerRadius = dp(22).toFloat(); setColor(0xFF3A1D20.toInt()) }
-            clipToOutline = true
+        tvMsg = label(11f, 0xFFFFD28A.toInt())
+        val tvInfo = label(10f, 0xFF8B949E.toInt()).apply {
+            text = "Durante o treino a tela fica bloqueada. Para encerrar, segure o botão Voltar por 5 s."
         }
-        holdFill = View(this).apply { setBackgroundColor(0xFFE5484D.toInt()) }
-        holdLbl = TextView(this).apply {
-            text = "■ Segure 5 s"; setTextColor(Color.WHITE); textSize = 14f; gravity = Gravity.CENTER
-            setTypeface(Typeface.DEFAULT, Typeface.BOLD); setPadding(0, dp(12), 0, dp(12))
-        }
-        holdBox.addView(holdFill, FrameLayout.LayoutParams(0, -1))
-        holdBox.addView(holdLbl, FrameLayout.LayoutParams(-1, -2))
-        holdBox.setOnTouchListener { _, ev ->
-            when (ev.actionMasked) {
-                MotionEvent.ACTION_DOWN -> { startHold(); true }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { cancelHold(); true }
-                else -> true
-            }
-        }
-        btnSkip = pill("Pular recuperação", 0xFF21262D.toInt(), size = 12f)
-        btnSkip.setOnClickListener { service(WorkoutService.ACTION_SKIP_RECOVERY) }
-
         col.addView(tvStatus)
-        col.addView(tvHr)
-        col.addView(tvZone, LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER_HORIZONTAL })
-        col.addView(tvClock, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
-        col.addView(tvDist)
-        col.addView(idleBox, LinearLayout.LayoutParams(-1, -2))
-        col.addView(holdBox, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
-        col.addView(btnSkip, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+        col.addView(tvIdleHr, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(4) })
+        col.addView(typeRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        col.addView(btnGps, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+        col.addView(btnStart, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
         col.addView(tvMsg, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
-        scroll.addView(col)
-        root.addView(scroll)
+        col.addView(tvInfo, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+        idleView.addView(col)
+
+        root.addView(idleView, FrameLayout.LayoutParams(-1, -1))
+        root.addView(runView, FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
+
+        // Voltar por gesto/sistema: durante o treino não sai do app
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (inWorkout()) return
+                isEnabled = false
+                onBackPressedDispatcher.onBackPressed()
+                isEnabled = true
+            }
+        })
 
         loadPhoneConfig()
         requestPermsAndConnect()
     }
 
     override fun onResume() { super.onResume(); ui.post(tick) }
+    override fun onPause() { ui.removeCallbacks(tick); super.onPause() }
 
     override fun onDestroy() {
         val ph = WorkoutState.phase
@@ -162,8 +204,84 @@ class WearActivity : ComponentActivity() {
         }
         super.onDestroy()
     }
-    override fun onPause() { ui.removeCallbacks(tick); super.onPause() }
 
+    private fun running() = WorkoutState.phase == WorkoutState.Phase.RUNNING
+    private fun inWorkout() = WorkoutState.phase == WorkoutState.Phase.RUNNING ||
+        WorkoutState.phase == WorkoutState.Phase.RECOVERY || WorkoutState.phase == WorkoutState.Phase.SENDING
+
+    // ---------- bloqueio de toque durante o treino ----------
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (running()) {
+            if (SystemClock.uptimeMillis() < touchFallbackUntil) return super.dispatchTouchEvent(ev)
+            if (ev.actionMasked == MotionEvent.ACTION_DOWN) lockToastUntil = SystemClock.uptimeMillis() + 2500
+            return true
+        }
+        return super.dispatchTouchEvent(ev)
+    }
+
+    override fun dispatchGenericMotionEvent(ev: MotionEvent): Boolean {
+        if (running()) return true   // ignora o bezel giratório durante o treino
+        return super.dispatchGenericMotionEvent(ev)
+    }
+
+    // ---------- botão Voltar: segurar 5 s para encerrar ----------
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_BACK && inWorkout()) {
+            if (running()) {
+                when (event.action) {
+                    KeyEvent.ACTION_DOWN -> if (event.repeatCount == 0) { backDownAt = SystemClock.uptimeMillis(); startHold() }
+                    KeyEvent.ACTION_UP -> {
+                        val held = SystemClock.uptimeMillis() - backDownAt
+                        cancelHold()
+                        if (held < 150) registerQuickBack()
+                    }
+                }
+            }
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    /**
+     * Alguns relógios só avisam o app quando o botão é solto. Nesse caso, 3 toques rápidos
+     * no Voltar liberam por 10 s um botão na tela para segurar 5 s.
+     */
+    private fun registerQuickBack() {
+        val now = SystemClock.uptimeMillis()
+        quickBacks.addLast(now)
+        while (quickBacks.isNotEmpty() && now - quickBacks.first() > 2000) quickBacks.removeFirst()
+        if (quickBacks.size >= 3) {
+            quickBacks.clear()
+            touchFallbackUntil = now + 10000
+            vibrate(60)
+        }
+    }
+
+    private fun startHold() {
+        holdAnim?.cancel()
+        vibrate(25)
+        holdAnim = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 5000
+            interpolator = LinearInterpolator()
+            addUpdateListener { ring.holdProgress = it.animatedValue as Float; ring.invalidate() }
+            addListener(object : AnimatorListenerAdapter() {
+                private var cancelled = false
+                override fun onAnimationCancel(animation: Animator) { cancelled = true }
+                override fun onAnimationEnd(animation: Animator) {
+                    ring.holdProgress = 0f; ring.invalidate()
+                    if (!cancelled) { vibrate(400); touchFallbackUntil = 0; service(WorkoutService.ACTION_STOP) }
+                }
+            })
+            start()
+        }
+    }
+
+    private fun cancelHold() {
+        holdAnim?.cancel(); holdAnim = null
+        ring.holdProgress = 0f; ring.invalidate()
+    }
+
+    // ---------- conexão / serviço ----------
     private fun hasBle() = Build.VERSION.SDK_INT < 31 ||
         (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED)
@@ -184,7 +302,6 @@ class WearActivity : ComponentActivity() {
         }
     }
 
-    /** Zonas e FCmáx enviadas pelo app do celular. */
     private fun loadPhoneConfig() {
         lifecycleScope.launch {
             try {
@@ -208,42 +325,9 @@ class WearActivity : ComponentActivity() {
         service(WorkoutService.ACTION_START)
     }
 
-    private fun startHold() {
-        holdAnim?.cancel()
-        vibrate(25)
-        holdAnim = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 5000
-            interpolator = LinearInterpolator()
-            addUpdateListener {
-                val p = it.animatedValue as Float
-                holdFill.layoutParams = holdFill.layoutParams.apply { width = (holdBox.width * p).toInt() }
-                holdFill.requestLayout()
-                holdLbl.text = if (p < 1f) "Segurando… ${kotlin.math.ceil((1 - p) * 5).toInt()} s" else "Encerrando"
-            }
-            addListener(object : android.animation.AnimatorListenerAdapter() {
-                private var cancelled = false
-                override fun onAnimationCancel(animation: android.animation.Animator) { cancelled = true }
-                override fun onAnimationEnd(animation: android.animation.Animator) {
-                    if (!cancelled) { vibrate(300); service(WorkoutService.ACTION_STOP) }
-                    resetHold()
-                }
-            })
-            start()
-        }
-    }
-
-    private fun cancelHold() { holdAnim?.cancel(); holdAnim = null; resetHold() }
-
-    private fun resetHold() {
-        holdFill.layoutParams = holdFill.layoutParams.apply { width = 0 }
-        holdFill.requestLayout()
-        holdLbl.text = "■ Segure 5 s"
-    }
-
     private fun vibrate(ms: Long) {
         try {
-            val v = getSystemService(Vibrator::class.java)
-            v?.vibrate(VibrationEffect.createOneShot(ms, VibrationEffect.DEFAULT_AMPLITUDE))
+            getSystemService(Vibrator::class.java)?.vibrate(VibrationEffect.createOneShot(ms, VibrationEffect.DEFAULT_AMPLITUDE))
         } catch (_: Exception) { }
     }
 
@@ -257,48 +341,73 @@ class WearActivity : ComponentActivity() {
         val now = System.currentTimeMillis()
         val fresh = now - st.lastHrMs < 5000
         val hr = if (fresh) st.hr else 0
-        tvHr.text = if (hr > 0) hr.toString() else "--"
+        val workout = inWorkout()
+
+        idleView.visibility = if (workout) View.GONE else View.VISIBLE
+        runView.visibility = if (workout) View.VISIBLE else View.GONE
+        if (workout) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
+        if (!workout) {
+            root.setBackgroundColor(Color.BLACK)
+            val bat = if (st.battery >= 0) " · bat. ${st.battery}%" else ""
+            tvStatus.text = "H10 ${st.connState}$bat"
+            tvIdleHr.text = if (hr > 0) "$hr bpm" else "--"
+            val cardio = st.type == "cardio"
+            (btnCardio.background as GradientDrawable).setColor(if (cardio) 0xFF58A6FF.toInt() else 0xFF21262D.toInt())
+            btnCardio.setTextColor(if (cardio) Color.BLACK else Color.WHITE)
+            (btnForca.background as GradientDrawable).setColor(if (!cardio) 0xFF58A6FF.toInt() else 0xFF21262D.toInt())
+            btnForca.setTextColor(if (!cardio) Color.BLACK else Color.WHITE)
+            btnGps.text = if (st.useGps) "GPS ligado" else "GPS desligado"
+            btnStart.alpha = if (st.connState == "conectado") 1f else 0.6f
+            tvMsg.text = st.message
+            return
+        }
+
         val z = if (hr > 0) st.zoneOf(hr) else -1
-        tvZone.text = if (z >= 0) st.zoneNames[z] else if (hr > 0) "Abaixo de Z1" else "Sem sinal"
-        (tvZone.background as GradientDrawable).setColor(if (z >= 0) st.zoneColors[z] else 0xFF21262D.toInt())
-        tvZone.setTextColor(if (z >= 0) Color.BLACK else Color.WHITE)
-        root.setBackgroundColor(if (z >= 0) (st.zoneColors[z] and 0x00FFFFFF) or 0x33000000 else Color.BLACK)
+        val bg = if (z >= 0) st.zoneColors[z] else 0xFF161B22.toInt()
+        root.setBackgroundColor(bg)
+        val fg = if (ColorUtils.calculateLuminance(bg) > 0.35) Color.BLACK else Color.WHITE
+        val fgSoft = ColorUtils.setAlphaComponent(fg, 200)
+        listOf(tvTop, tvBottom, tvHint).forEach { it.setTextColor(fgSoft) }
+        tvZone.setTextColor(fg); tvHr.setTextColor(fg)
 
-        val bat = if (st.battery >= 0) " · bat. ${st.battery}%" else ""
-        val contact = if (st.contact == false) " · sem contato" else ""
-        tvStatus.text = "H10 ${st.connState}$bat$contact"
+        ring.hr = hr; ring.invalidate()
+        tvHr.text = if (hr > 0) hr.toString() else "--"
+        tvZone.text = when {
+            hr <= 0 -> if (st.contact == false) "SEM CONTATO" else "SEM SINAL"
+            z < 0 -> "ABAIXO DE Z1"
+            else -> "ZONA ${z + 1} · ${st.zoneNames[z].substringAfter(' ').uppercase()}"
+        }
 
-        val running = st.phase == WorkoutState.Phase.RUNNING
-        val recovery = st.phase == WorkoutState.Phase.RECOVERY
-        idleBox.visibility = if (st.phase == WorkoutState.Phase.IDLE || st.phase == WorkoutState.Phase.DONE) View.VISIBLE else View.GONE
-        holdBox.visibility = if (running) View.VISIBLE else View.GONE
-        btnSkip.visibility = if (recovery) View.VISIBLE else View.GONE
-
+        val bat = if (st.battery in 0..20) " · bat. cinta ${st.battery}%" else ""
         when (st.phase) {
             WorkoutState.Phase.RUNNING -> {
-                tvClock.text = "${if (st.type == "forca") "Musculação" else "Cardio"} · ${fmt((now - st.startMs) / 1000)}"
-                tvDist.text = if (st.useGps) {
-                    val km = "%.2f km".format(st.distanceM / 1000)
-                    val pace = if (st.paceSecKm > 0 && st.paceSecKm < 1800) " · %d:%02d/km".format((st.paceSecKm / 60).toInt(), (st.paceSecKm % 60).toInt()) else ""
+                tvTop.text = fmt((now - st.startMs) / 1000) + bat
+                tvBottom.text = if (st.useGps) {
+                    val km = "%.2f km".format(st.distanceM / 1000).replace('.', ',')
+                    val pace = if (st.paceSecKm > 0 && st.paceSecKm < 1800) "  %d:%02d/km".format((st.paceSecKm / 60).toInt(), (st.paceSecKm % 60).toInt()) else ""
                     if (st.gpsFix || st.distanceM > 0) km + pace else "Aguardando GPS…"
-                } else ""
+                } else "Musculação"
+                tvHint.text = when {
+                    ring.holdProgress > 0f -> "Encerrando em ${kotlin.math.ceil((1 - ring.holdProgress) * 5).toInt()} s…"
+                    SystemClock.uptimeMillis() < lockToastUntil -> "🔒 Tela bloqueada · segure Voltar 5 s"
+                    else -> "🔒 Segure Voltar 5 s para encerrar"
+                }
+                btnHoldTouch.visibility = if (SystemClock.uptimeMillis() < touchFallbackUntil) View.VISIBLE else View.GONE
+                btnSkip.visibility = View.GONE
             }
-            WorkoutState.Phase.RECOVERY -> { tvClock.text = "Recuperação: ${st.recoveryLeft} s"; tvDist.text = "Fique parado ou caminhe devagar" }
-            WorkoutState.Phase.SENDING -> { tvClock.text = "Salvando…"; tvDist.text = "" }
-            else -> { tvClock.text = ""; tvDist.text = "" }
+            WorkoutState.Phase.RECOVERY -> {
+                tvTop.text = "Recuperação"
+                tvBottom.text = "${st.recoveryLeft} s · parado ou caminhando"
+                tvHint.text = ""
+                btnSkip.visibility = View.VISIBLE
+                btnHoldTouch.visibility = View.GONE
+            }
+            else -> {
+                tvTop.text = "Salvando…"; tvBottom.text = ""; tvHint.text = ""
+                btnSkip.visibility = View.GONE; btnHoldTouch.visibility = View.GONE
+            }
         }
-        window.let { w ->
-            if (running || recovery) w.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            else w.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
-
-        val cardio = st.type == "cardio"
-        (btnCardio.background as GradientDrawable).setColor(if (cardio) 0xFF58A6FF.toInt() else 0xFF21262D.toInt())
-        btnCardio.setTextColor(if (cardio) Color.BLACK else Color.WHITE)
-        (btnForca.background as GradientDrawable).setColor(if (!cardio) 0xFF58A6FF.toInt() else 0xFF21262D.toInt())
-        btnForca.setTextColor(if (!cardio) Color.BLACK else Color.WHITE)
-        btnGps.text = if (st.useGps) "GPS ligado" else "GPS desligado"
-        btnStart.alpha = if (st.connState == "conectado") 1f else 0.6f
-        tvMsg.text = st.message
     }
 }
