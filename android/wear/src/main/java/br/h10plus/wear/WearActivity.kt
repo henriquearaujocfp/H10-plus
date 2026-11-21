@@ -226,7 +226,7 @@ class WearActivity : ComponentActivity() {
     // ---------- bloqueio de toque durante o treino ----------
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         if (running()) {
-            if (SystemClock.uptimeMillis() < touchFallbackUntil) return super.dispatchTouchEvent(ev)
+            if (SystemClock.uptimeMillis() < touchFallbackUntil || holdAnim != null) return super.dispatchTouchEvent(ev)
             if (ev.actionMasked == MotionEvent.ACTION_DOWN) lockToastUntil = SystemClock.uptimeMillis() + 2500
             return true
         }
