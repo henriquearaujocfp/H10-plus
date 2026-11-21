@@ -235,6 +235,14 @@
   </section>
 
 
+  <section class="card hidden" id="nightCard">
+    <h2>Noite (Galaxy Watch)</h2>
+    <div id="nightBody"></div>
+    <p id="nightMsg" class="msg"></p>
+    <div class="row"><button id="hcBtn" class="primary">Conectar ao Health Connect</button></div>
+    <p class="msg">Dados que o relógio grava no Samsung Health e são copiados para o Health Connect. No Samsung Health: Configurações → Health Connect → permitir o compartilhamento. O relógio sincroniza com o celular no ritmo dele; se a noite não aparecer, abra o Samsung Health e depois toque em Atualizar.</p>
+  </section>
+
   <section class="card">
     <h2>Repouso · 5 min</h2>
     <div class="row" style="align-items:center;gap:10px">
@@ -1406,7 +1414,7 @@
     T_INPUTS.forEach(id => { $(id).value = store.get(id, $(id).value); });
     $('tMax').checked = false;
     setTMode(tMode);
-    $('tReady').innerHTML = readyHtml(readinessNow());
+    $('tReady').innerHTML = readyHtml(readinessNow()) + nightReadyHtml();
     $('testSetup').classList.remove('hidden'); $('testRun').classList.add('hidden');
     $('testOv').classList.remove('hidden'); $('testOv').scrollTop = 0;
   }
@@ -1756,6 +1764,164 @@
     });
   }
 
+  // ---------- noite: Galaxy Watch via Samsung Health → Health Connect ----------
+  const NKEY = 'h10_nights_v1';
+  let nights = {};
+  try { nights = JSON.parse(store.get(NKEY, '{}')) || {}; } catch (e) { nights = {}; }
+  let hcGranted = [], hcSdk = '', hcMissing = [], hcLoading = false;
+  const dkey = t => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+  const stdev = a => { if (a.length < 2) return null; const m = avg(a); return Math.sqrt(a.reduce((x, y) => x + (y - m) ** 2, 0) / (a.length - 1)); };
+  const pctl = (a, p) => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
+  const HC_NAMES = {sleep: 'sono', hr: 'FC', rhr: 'FC de repouso', hrv: 'HRV', spo2: 'SpO₂', resp: 'respiração', skin: 'temperatura da pele'};
+
+  function saveNights(){ try { localStorage.setItem(NKEY, JSON.stringify(nights)); } catch (e) {} }
+
+  function onHc(d){
+    if (d.kind === 'status' || d.kind === 'perm') {
+      hcSdk = d.sdk || hcSdk || 'available';
+      hcGranted = d.granted || [];
+      renderNight();
+      if (hcGranted.includes('sleep') && !hcLoading) { hcLoading = true; NATIVE.hcRead(Object.keys(nights).length ? 14 : 60); }
+    } else if (d.kind === 'data') {
+      hcLoading = false;
+      hcGranted = d.granted || hcGranted;
+      processHc(d); renderNight();
+    } else if (d.kind === 'error') {
+      hcLoading = false;
+      $('nightMsg').innerHTML = `<span class="bad">${d.msg}</span>`;
+    }
+  }
+
+  function processHc(d){
+    const inWin = (t, w) => w.some(([s, e]) => t >= s && t <= e);
+    const sessions = (d.sleep || []).filter(x => x.e - x.s >= 2 * 3600e3);
+    const byNight = {};
+    for (const x of sessions) (byNight[dkey(x.e)] = byNight[dkey(x.e)] || []).push(x);
+    hcMissing = ['hr', 'rhr', 'hrv', 'spo2', 'resp', 'skin'].filter(k => hcGranted.includes(k) && !(d[k] || []).length);
+    if (!sessions.length && hcGranted.includes('sleep')) hcMissing.unshift('sleep');
+    for (const [k, ss] of Object.entries(byNight)) {
+      const win = ss.map(x => [x.s, x.e]);
+      const inBed = ss.reduce((a, x) => a + (x.e - x.s), 0) / 60000;
+      let awake = 0, deep = 0, rem = 0, light = 0, staged = false;
+      for (const x of ss) for (const [s, e, st] of (x.st || [])) {
+        staged = true; const m = (e - s) / 60000;
+        if (st === 1 || st === 3 || st === 7) awake += m; else if (st === 5) deep += m; else if (st === 6) rem += m; else if (st === 4) light += m;
+      }
+      const sleepMin = staged ? Math.max(0, inBed - awake) : inBed;
+      const hr = (d.hr || []).filter(([t]) => inWin(t, win)).map(x => x[1]);
+      const hrv = (d.hrv || []).filter(([t]) => inWin(t, win)).map(x => x[1]);
+      const sp = (d.spo2 || []).filter(([t]) => inWin(t, win)).map(x => x[1]);
+      const rs = (d.resp || []).filter(([t]) => inWin(t, win)).map(x => x[1]);
+      const sk = (d.skin || []).filter(x => x.e >= win[0][0] && x.s <= win[win.length - 1][1]).flatMap(x => (x.d || []).map(y => y[1]));
+      const rhr = (d.rhr || []).filter(([t]) => dkey(t) === k).map(x => x[1]);
+      nights[k] = {
+        k, s: Math.min(...win.map(w => w[0])), e: Math.max(...win.map(w => w[1])),
+        sleep: Math.round(sleepMin), inBed: Math.round(inBed), awake: Math.round(awake),
+        deep: staged && sleepMin ? +(deep / sleepMin * 100).toFixed(1) : null, rem: staged && sleepMin ? +(rem / sleepMin * 100).toFixed(1) : null,
+        hr: hr.length ? +avg(hr).toFixed(1) : null, hrLow: hr.length >= 20 ? pctl(hr, 0.05) : (hr.length ? Math.min(...hr) : null), hrN: hr.length,
+        hrv: hrv.length ? +avg(hrv).toFixed(1) : null,
+        spo2: sp.length ? +avg(sp).toFixed(1) : null, spo2Min: sp.length ? Math.min(...sp) : null, spo2Low: sp.length ? +(sp.filter(v => v < 90).length / sp.length * 100).toFixed(1) : null,
+        resp: rs.length ? +avg(rs).toFixed(1) : null,
+        skin: sk.length ? +avg(sk).toFixed(2) : null,
+        rhr: rhr.length ? rhr[rhr.length - 1] : null
+      };
+    }
+    // mantém 180 noites
+    const ks = Object.keys(nights).sort(); while (ks.length > 180) delete nights[ks.shift()];
+    saveNights();
+  }
+
+  // desvio da noite em relação às 28 noites anteriores (mínimo de 5)
+  function nightZ(key, metric){
+    const ks = Object.keys(nights).sort().filter(x => x < key).slice(-28);
+    const vals = ks.map(x => nights[x][metric]).filter(v => v != null);
+    const v = nights[key] && nights[key][metric];
+    if (v == null || vals.length < 5) return null;
+    // piso no desvio-padrão para que uma base muito estável não transforme variações mínimas em alerta
+    const FLOOR = {hr: 1.5, hrLow: 1.5, rhr: 1.5, resp: 0.5, skin: 0.15, hrv: 3, spo2: 0.5, sleep: 20, deep: 3, rem: 3};
+    const m = avg(vals), s = Math.max(stdev(vals) || 0, FLOOR[metric] || 0);
+    return {v, m, s, z: s ? (v - m) / s : 0, n: vals.length};
+  }
+
+  function nightFlags(key){
+    // sentido "pior": FC, respiração e temperatura acima; HRV e SpO2 abaixo
+    const rules = [['hr', 1, 'FC média no sono'], ['resp', 1, 'frequência respiratória'], ['skin', 1, 'temperatura da pele'], ['hrv', -1, 'HRV'], ['spo2', -1, 'SpO₂']];
+    const out = [];
+    for (const [m, dir, lbl] of rules) { const z = nightZ(key, m); if (z && z.z * dir > 1) out.push(`${lbl} ${dir > 0 ? 'acima' : 'abaixo'} da sua base (${z.z >= 0 ? '+' : ''}${z.z.toFixed(1).replace('.', ',')} DP)`); }
+    return out;
+  }
+
+  function renderNight(){
+    if (!NATIVE) return;
+    const body = $('nightBody'), btn = $('hcBtn');
+    if (hcSdk === 'unavailable') { body.innerHTML = '<p class="msg">Health Connect indisponível neste aparelho.</p>'; btn.classList.add('hidden'); return; }
+    if (hcSdk === 'update') { body.innerHTML = '<p class="msg">Atualize o Health Connect pela Play Store e tente de novo.</p>'; return; }
+    if (!hcGranted.includes('sleep')) {
+      body.innerHTML = '<p class="msg">Sem acesso ainda. Toque em "Conectar" e permita a leitura dos dados.</p>';
+      btn.textContent = 'Conectar ao Health Connect'; return;
+    }
+    btn.textContent = hcLoading ? 'Lendo…' : 'Atualizar';
+    const ks = Object.keys(nights).sort();
+    if (!ks.length) { body.innerHTML = `<p class="msg">${hcLoading ? 'Lendo os dados…' : 'Nenhuma noite de sono encontrada nos últimos 60 dias. Confira no Samsung Health se a sincronização com o Health Connect está ligada.'}</p>`; return; }
+    const k = ks[ks.length - 1], n = nights[k];
+    const dt = new Date(n.e);
+    const fmtH = m => `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`;
+    const cell = (m, val, lbl, dir) => {
+      const z = nightZ(k, m);
+      const cls = z && dir && z.z * dir > 1 ? 'bad' : '';
+      const base = z ? `base ${m === 'skin' ? z.m.toFixed(2) : m === 'sleep' ? fmtH(Math.round(z.m)) : z.m.toFixed(0)}` : '';
+      return `<div class="stat"><b class="${cls}">${val}</b><span>${lbl}${base ? '<br>' + base : ''}</span></div>`;
+    };
+    const flags = nightFlags(k);
+    body.innerHTML = `
+      <p class="status-line">Noite até ${dt.toLocaleDateString('pt-BR', {weekday: 'short', day: '2-digit', month: '2-digit'})} ${dt.toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'})}</p>
+      <div class="grid">
+        ${cell('sleep', fmtH(n.sleep), 'Sono')}
+        ${cell('deep', n.deep != null ? n.deep.toFixed(0) + '%' : '--', 'Profundo')}
+        ${cell('rem', n.rem != null ? n.rem.toFixed(0) + '%' : '--', 'REM')}
+        ${cell('hr', n.hr != null ? n.hr.toFixed(0) : '--', 'FC média sono', 1)}
+        ${cell('hrLow', n.hrLow != null ? n.hrLow : '--', 'FC baixa (p5)', 1)}
+        ${cell('rhr', n.rhr != null ? n.rhr : '--', 'FC repouso (SH)', 1)}
+        ${cell('hrv', n.hrv != null ? n.hrv.toFixed(0) : '--', 'HRV (ms)', -1)}
+        ${cell('spo2', n.spo2 != null ? n.spo2.toFixed(1) + '%' : '--', `SpO₂${n.spo2Min != null ? ' · mín ' + n.spo2Min.toFixed(0) : ''}`, -1)}
+        ${cell('resp', n.resp != null ? n.resp.toFixed(1) : '--', 'Respiração (rpm)', 1)}
+        ${cell('skin', n.skin != null ? (n.skin >= 0 ? '+' : '') + n.skin.toFixed(2) + '°' : '--', 'Temp. pele Δ', 1)}
+      </div>
+      ${flags.length ? `<p class="status-line bad" style="margin-top:8px">${flags.join('; ')}.</p><p class="msg">Desvios assim costumam acompanhar treino pesado recente, sono ruim, álcool, estresse ou início de doença. Use como sinal para aliviar o dia, não como diagnóstico.</p>` : (nightZ(k, 'hr') ? '<p class="status-line good" style="margin-top:8px">Marcadores dentro da sua faixa normal (±1 DP das últimas 28 noites).</p>' : `<p class="msg" style="margin-top:8px">Linha de base em construção: precisa de pelo menos 5 noites anteriores (${ks.length - 1} até agora).</p>`)}
+      ${n.spo2Low != null && n.spo2Low > 5 ? `<p class="msg">SpO₂ abaixo de 90% em ${n.spo2Low.toFixed(0)}% das leituras da noite. A oximetria de pulso no punho tem erro de alguns pontos; se isso se repetir, vale conversar com um médico sobre investigação do sono.</p>` : ''}
+      <canvas id="nightTrend" class="trend"></canvas>
+      <p class="msg">FC média no sono nas últimas 30 noites; faixa = sua média ± 1 DP.</p>
+      ${hcMissing.length ? `<p class="msg">Sem dados no Health Connect para: ${hcMissing.map(x => HC_NAMES[x]).join(', ')}. Nem todo dado do relógio é copiado pelo Samsung Health.</p>` : ''}`;
+    requestAnimationFrame(drawNightTrend);
+  }
+
+  function drawNightTrend(){
+    const cv = $('nightTrend'); if (!cv || !cv.clientWidth) return;
+    const c = sizeCanvas(cv), W = cv.clientWidth, H = cv.clientHeight;
+    const ks = Object.keys(nights).sort().slice(-30).filter(k => nights[k].hr != null);
+    c.clearRect(0, 0, W, H);
+    if (ks.length < 2) return;
+    const v = ks.map(k => nights[k].hr), m = avg(v), s = stdev(v) || 0;
+    const lo = Math.floor(Math.min(...v, m - s) - 2), hi = Math.ceil(Math.max(...v, m + s) + 2);
+    const padL = 28, padB = 14;
+    const x = i => padL + i / (ks.length - 1) * (W - padL - 6);
+    const y = val => (H - padB) - (val - lo) / (hi - lo) * (H - padB - 4);
+    c.fillStyle = 'rgba(47,191,113,.14)'; c.fillRect(padL, y(m + s), W - padL - 6, y(m - s) - y(m + s));
+    c.font = '11px system-ui'; c.fillStyle = '#8b949e'; c.textAlign = 'right'; c.textBaseline = 'middle';
+    c.fillText(hi, padL - 4, y(hi)); c.fillText(lo, padL - 4, y(lo));
+    c.strokeStyle = '#58a6ff'; c.lineWidth = 2; c.beginPath();
+    v.forEach((val, i) => i ? c.lineTo(x(i), y(val)) : c.moveTo(x(i), y(val))); c.stroke();
+    c.fillStyle = '#c9d1d9'; v.forEach((val, i) => { c.beginPath(); c.arc(x(i), y(val), 2.5, 0, Math.PI * 2); c.fill(); });
+  }
+
+  function nightReadyHtml(){
+    const today = dkey(Date.now());
+    if (!nights[today]) return '';
+    const f = nightFlags(today);
+    return f.length ? `<p class="status-line bad">Noite (relógio): ${f.join('; ')}.</p>` : (nightZ(today, 'hr') ? '<p class="status-line">Noite (relógio): marcadores dentro do normal.</p>' : '');
+  }
+
   // ---------- app Android (ponte nativa) ----------
   const NATIVE_APK = 'https://github.com/henriquearaujocfp/H10-plus/releases/download/android-latest/h10plus.apk';
   let memEntries = [], memData = null;
@@ -1763,6 +1929,12 @@
     if (!NATIVE) return;
     $('envMsg').classList.add('hidden');
     $('memCard').classList.remove('hidden');
+    $('nightCard').classList.remove('hidden');
+    $('hcBtn').addEventListener('click', () => {
+      if (!hcGranted.includes('sleep')) NATIVE.hcRequest();
+      else if (!hcLoading) { hcLoading = true; renderNight(); NATIVE.hcRead(14); }
+    });
+    NATIVE.hcStatus();
     window.__h10n = (type, d) => {
       switch (type) {
         case 'status':
@@ -1797,6 +1969,7 @@
         case 'ble': if (!d.on) showErr('Bluetooth desligado: ligue o Bluetooth do celular.'); break;
         case 'error': showErr(d.msg); break;
         case 'rec': onMem(d); break;
+        case 'hc': onHc(d); break;
       }
     };
     // aviso de nova versão do APK (a parte web se atualiza sozinha)
@@ -2418,7 +2591,7 @@
   renderHistory();
 
   // ---------- app instalável (PWA) ----------
-  const APP_VERSION = '2026-11-21.4';
+  const APP_VERSION = '2026-11-21.5';
   $('appVer').textContent = APP_VERSION + (NATIVE ? ' · app Android ' + NATIVE.version() : '');
   nativeInit();
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
