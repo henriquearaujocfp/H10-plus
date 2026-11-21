@@ -137,6 +137,7 @@
 
   <div id="envMsg" class="card msg err hidden"></div>
 
+  <div id="apkBanner" class="card hidden"></div>
   <div id="wipBanner" class="card hidden">
     <h2>Treino interrompido</h2>
     <p id="wipTxt" class="msg"></p>
@@ -182,6 +183,18 @@
       <div id="zones"></div>
       <button class="holdEnd big"><span class="fill"></span><span class="lbl">■ Segure 5 s para encerrar</span></button>
     </div>
+  </section>
+
+  <section class="card hidden" id="memCard">
+    <h2>Correr só com a cinta</h2>
+    <p id="memStatus" class="msg">Conecte o H10 para usar a memória da cinta.</p>
+    <div class="row">
+      <button id="memStart" class="primary" disabled>Iniciar gravação na cinta</button>
+      <button id="memStop" disabled>Parar gravação</button>
+    </div>
+    <div class="row" style="margin-top:8px"><button id="memList" disabled>Baixar gravações da cinta</button></div>
+    <div id="memItems"></div>
+    <p class="msg">A cinta grava os intervalos RR batimento a batimento na própria memória (uma gravação por vez). Inicie aqui, desconecte e saia sem o celular; na volta, conecte, pare a gravação e importe. Durante a corrida não há FC na tela nem GPS.</p>
   </section>
 
   <section class="card" id="testCard">
@@ -432,6 +445,7 @@
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
+  const NATIVE = window.H10Native || null;
   const ZONES = [
     {n:'Z1 Recuperação', lo:.50, hi:.60, c:'var(--z1)', hex:'#4c8bf5'},
     {n:'Z2 Aeróbico',    lo:.60, hi:.70, c:'var(--z2)', hex:'#2fbf71'},
@@ -466,6 +480,7 @@
   // ---------- checagem de ambiente ----------
   function envCheck(){
     const m = $('envMsg');
+    if (NATIVE) return true;
     if (!('bluetooth' in navigator)) {
       m.innerHTML = 'Este navegador não expõe Web Bluetooth. Abra este arquivo no <b>Chrome do Android</b> (ou Chrome/Edge no computador). O modo demo funciona em qualquer lugar.';
       m.classList.remove('hidden'); return false;
@@ -573,6 +588,7 @@
 
   // ---------- conexão Bluetooth ----------
   async function connect(){
+    if (NATIVE) { stopDemo(); manualDisconnect = false; setStatus('Procurando…'); NATIVE.connect(); return; }
     if (!envCheck()) return;
     stopDemo();
     try {
@@ -631,6 +647,11 @@
   }
   async function toggleEcg(){
     if (demoTimer) { ecgOn ? stopDemoEcg() : startDemoEcg(); return; }
+    if (NATIVE) {
+      if (ecgOn) { ecgWanted = false; NATIVE.stopEcg(); }
+      else { ecgWanted = true; $('ecgInfo').textContent = 'Iniciando ECG… os primeiros dados levam alguns segundos.'; NATIVE.startEcg(); }
+      return;
+    }
     if (!pmdCP) return;
     try {
       if (!ecgOn) {
@@ -788,7 +809,8 @@
 
   function disconnect(){
     manualDisconnect = true; ecgWanted = false;
-    if (device && device.gatt.connected) device.gatt.disconnect();
+    if (NATIVE) NATIVE.disconnect();
+    else if (device && device.gatt && device.gatt.connected) device.gatt.disconnect();
     setEcgOn(false); pmdCP = pmdData = null; $('btnEcg').disabled = true;
     device = null; hrChar = null;
     $('btnConnect').textContent = 'Conectar H10';
@@ -1092,6 +1114,7 @@
     const raw = lastRaw && lastRaw.id === w.id;
     $('evalBody').innerHTML = `
       ${w.recovered ? '<p class="msg">Treino recuperado após o app fechar: o fim registrado é o último dado salvo.</p>' : ''}
+      ${w.source === 'cinta' ? '<p class="msg">Importado da memória da cinta (intervalos RR batimento a batimento). Sem recuperação da FC medida.</p>' : ''}
       <section class="card">
         <h2>Dados medidos</h2>
         <div class="grid">
@@ -1733,11 +1756,164 @@
     });
   }
 
+  // ---------- app Android (ponte nativa) ----------
+  const NATIVE_APK = 'https://github.com/henriquearaujocfp/H10-plus/releases/download/android-latest/h10plus.apk';
+  let memEntries = [], memData = null;
+  function nativeInit(){
+    if (!NATIVE) return;
+    $('envMsg').classList.add('hidden');
+    $('memCard').classList.remove('hidden');
+    window.__h10n = (type, d) => {
+      switch (type) {
+        case 'status':
+          if (d.state === 'connected') {
+            device = {native: true, id: d.id};
+            manualDisconnect = false;
+            setStatus('Conectado', 'on');
+            $('btnConnect').textContent = 'Desconectar';
+            $('btnEcg').disabled = false;
+            $('envMsg').classList.add('hidden');
+            syncAwake(); memUI();
+          } else if (d.state === 'disconnected') {
+            const was = !!device;
+            device = null; setEcgOn(false); $('btnEcg').disabled = true;
+            if (was && !manualDisconnect) setStatus('Reconectando…', 'warn');
+            else { setStatus('Desconectado'); $('btnConnect').textContent = 'Conectar H10'; }
+            syncAwake(); memUI();
+          } else if (d.state === 'scanning') setStatus('Procurando H10…');
+          else if (d.state === 'connecting') setStatus('Conectando…');
+          break;
+        case 'hr': onReading({hr: d.hr, contact: d.contact, rr: d.rr || []}); break;
+        case 'ecg': pushEcg(d.v, BigInt(d.ts || '0')); if (!ecgOn) setEcgOn(true); break;
+        case 'ecgState':
+          setEcgOn(!!d.on);
+          $('ecgInfo').textContent = d.on ? 'ECG ativo. Fique parado alguns segundos para o traçado estabilizar.' : 'ECG parado.';
+          break;
+        case 'feature':
+          if (d.f === 'FEATURE_POLAR_ONLINE_STREAMING' && ecgWanted) NATIVE.startEcg();
+          if (d.f === 'FEATURE_POLAR_H10_EXERCISE_RECORDING') { memReady = true; memUI(); NATIVE.recStatus(); }
+          break;
+        case 'battery': subLine.battery = d.level + '%'; renderSub(); break;
+        case 'ble': if (!d.on) showErr('Bluetooth desligado: ligue o Bluetooth do celular.'); break;
+        case 'error': showErr(d.msg); break;
+        case 'rec': onMem(d); break;
+      }
+    };
+    // aviso de nova versão do APK (a parte web se atualiza sozinha)
+    fetch('https://api.github.com/repos/henriquearaujocfp/H10-plus/releases/tags/android-latest', {cache: 'no-store'})
+      .then(r => r.json()).then(j => {
+        const m = /build=(\d+)/.exec(j.body || ''); const latest = m ? +m[1] : 0;
+        const cur = +String(NATIVE.version()).split('.').pop() || 0;
+        if (latest > cur) {
+          const b = $('apkBanner');
+          b.innerHTML = `<p class="status-line">Nova versão do app Android disponível (build ${latest}; você tem ${cur}).</p><div class="row"><button id="apkGet" class="primary">Baixar e instalar</button></div><p class="msg">Instalar por cima mantém seus dados.</p>`;
+          b.classList.remove('hidden');
+          $('apkGet').onclick = () => NATIVE.openUrl(NATIVE_APK);
+        }
+      }).catch(() => {});
+  }
+
+  // ---------- memória da cinta ----------
+  let memReady = false, memOngoing = false;
+  function memUI(){
+    const on = !!device && memReady;
+    $('memStart').disabled = !on || memOngoing;
+    $('memStop').disabled = !on || !memOngoing;
+    $('memList').disabled = !on;
+    if (!device) $('memStatus').textContent = 'Conecte o H10 para usar a memória da cinta.';
+    else if (!memReady) $('memStatus').textContent = 'Preparando acesso à memória da cinta…';
+  }
+  function onMem(d){
+    const st = $('memStatus');
+    switch (d.kind) {
+      case 'status':
+        memOngoing = !!d.ongoing;
+        st.innerHTML = !d.supported ? 'Esta cinta não suporta gravação interna.'
+          : d.ongoing ? '<span class="good">Gravando na cinta.</span> Pode desconectar e sair só com a cinta. Na volta: conectar → Parar gravação → Baixar gravações.'
+          : 'Sem gravação em andamento.';
+        memUI(); break;
+      case 'started': beep(1); break;
+      case 'stopped': beep(2); NATIVE.recList(); break;
+      case 'list':
+        memEntries = d.items || [];
+        $('memItems').innerHTML = memEntries.length ? memEntries.map(e => {
+          const dt = new Date(e.date);
+          return `<div class="wkItem"><div class="t1"><span>${isNaN(dt) ? e.date : dt.toLocaleString('pt-BR', {dateStyle: 'short', timeStyle: 'short'})}</span><span><button data-mem="${e.i}" class="primary" style="flex:none;min-width:0;padding:6px 12px">Importar</button></span></div></div>`;
+        }).join('') : '<p class="msg">Nenhuma gravação na cinta.</p>';
+        break;
+      case 'data':
+        memData = d;
+        $('memItems').innerHTML = `<div class="card" style="margin-top:8px"><h2>Importar gravação</h2>
+          <p class="msg">${(d.samples || []).length} amostras · início ${new Date(d.date).toLocaleString('pt-BR', {dateStyle: 'short', timeStyle: 'short'})}</p>
+          <div class="seg typeSeg" id="memType"><button data-t="cardio" class="sel">Cardio</button><button data-t="forca">Musculação</button></div>
+          <label class="chk"><input type="checkbox" id="memFasted"> Em jejum</label>
+          <div class="row" style="margin-top:8px"><button id="memSave" class="primary">Salvar e avaliar</button><button id="memDel">Apagar da cinta</button></div></div>`;
+        $('memType').onclick = e => { const b = e.target.closest('button[data-t]'); if (b) [...$('memType').children].forEach(x => x.classList.toggle('sel', x === b)); };
+        $('memSave').onclick = () => {
+          const t = $('memType').querySelector('.sel').dataset.t;
+          importMem(memData, t, $('memFasted').checked);
+          $('memSave').textContent = 'Salvo ✓'; $('memSave').disabled = true;
+        };
+        $('memDel').onclick = e => {
+          const b = e.currentTarget;
+          if (b.dataset.armed) NATIVE.recRemove(memData.i);
+          else { b.dataset.armed = '1'; b.textContent = 'Toque de novo para apagar'; setTimeout(() => { if (b.isConnected) { delete b.dataset.armed; b.textContent = 'Apagar da cinta'; } }, 3000); }
+        };
+        break;
+      case 'removed': $('memItems').innerHTML = '<p class="msg">Gravação apagada da cinta.</p>'; NATIVE.recStatus(); break;
+      case 'error': st.innerHTML = `<span class="bad">${d.msg}</span>`; break;
+    }
+  }
+  function importMem(d, type, fasted){
+    const s = d.samples || [];
+    let start = new Date(d.date).getTime();
+    if (!start || isNaN(start)) start = Date.now() - s.length * 1000;
+    const id = 'w' + start;
+    if (workouts.some(w => w.id === id)) { openEval(id); return; }
+    let hr, end, rows = [];
+    if (s.length && median(s) > 250) {
+      // intervalos RR (ms) → FC média de cada segundo
+      const cl = cleanRR(s).rr;
+      const sums = [], cnt = [];
+      let t = start;
+      for (let i = 0; i < cl.length; i++) {
+        t += cl[i];
+        const sec = Math.floor((t - start) / 1000);
+        sums[sec] = (sums[sec] || 0) + 60000 / cl[i]; cnt[sec] = (cnt[sec] || 0) + 1;
+        rows.push([new Date(t).toISOString(), Math.round(60000 / cl[i]), s[i], '']);
+      }
+      end = t;
+      const N = Math.max(1, Math.ceil((end - start) / 1000));
+      hr = Array.from({length: N}, (_, i) => cnt[i] ? Math.round(sums[i] / cnt[i]) : 0);
+      let last = -9;
+      for (let i = 0; i < N; i++) { if (hr[i]) last = i; else if (i - last <= 2 && last >= 0) hr[i] = hr[last]; }
+    } else {
+      const step = d.interval || 1;
+      hr = []; for (const v of s) for (let k = 0; k < step; k++) hr.push(v);
+      end = start + hr.length * 1000;
+    }
+    const w = {id, type, fasted, start, end, cfg: cfgSnap(), hr, hrr: null, source: 'cinta'};
+    workouts.push(w); saveWorkouts();
+    lastRaw = rows.length ? {id, rows, ecg: []} : null;
+    openEval(id);
+  }
+
+  // botão "voltar" do Android: fecha a tela sobreposta aberta
+  window.__h10back = () => {
+    if (!$('evalOv').classList.contains('hidden')) { closeEval(); return true; }
+    if (!$('testOv').classList.contains('hidden')) { $('testOv').classList.add('hidden'); renderTestCard(); return true; }
+    if (focusOn) { exitFocus(); return true; }
+    if (!$('restOv').classList.contains('hidden')) return true;
+    if ($('tabMonitor').classList.contains('hidden')) { $('tabs').querySelector('[data-tab=tabMonitor]').click(); return true; }
+    return false;
+  };
+
   // ---------- tela sempre ligada ----------
   // 1º Screen Wake Lock API; se o navegador recusar, vídeo mudo em loop (técnica alternativa, menos garantida)
   let awakeMode = '', nsVideo = null, nsTimer = null;
   function wantAwake(){ return !!(device || demoTimer || focusOn || wk || hrrCap || test || (rest && !rest.done)); }
   async function syncAwake(){
+    if (NATIVE) { NATIVE.keepScreenOn(wantAwake()); awakeMode = wantAwake() ? 'nativo' : ''; updateAwakeLabel(); return; }
     if (wantAwake()) {
       if (wakeLock && !wakeLock.released) { updateAwakeLabel(); return; }
       try {
@@ -1777,7 +1953,7 @@
   function updateAwakeLabel(){
     const el = $('awakeLbl');
     if (!wantAwake()) { el.textContent = ''; return; }
-    el.textContent = awakeMode === 'wakelock' ? 'Tela sempre ligada: ativa.'
+    el.textContent = awakeMode === 'wakelock' || awakeMode === 'nativo' ? 'Tela sempre ligada: ativa.'
       : awakeMode === 'video' ? 'Tela sempre ligada: modo alternativo (não garantido neste navegador).'
       : 'Tela sempre ligada: o navegador recusou. Aumente o tempo de bloqueio do Android durante o uso.';
   }
@@ -1791,12 +1967,14 @@
   async function enterFocus(){
     focusOn = true;
     $('focus').classList.remove('hidden');
-    try { await document.documentElement.requestFullscreen({navigationUI: 'hide'}); } catch (e) {}
+    if (NATIVE) NATIVE.setImmersive(true);
+    else try { await document.documentElement.requestFullscreen({navigationUI: 'hide'}); } catch (e) {}
     syncAwake(); renderFocus();
   }
   function exitFocus(){
     focusOn = false;
     $('focus').classList.add('hidden');
+    if (NATIVE) NATIVE.setImmersive(false);
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     syncAwake();
   }
@@ -1828,6 +2006,12 @@
 
   // ---------- compartilhar/baixar arquivos ----------
   async function shareFiles(files, title){
+    if (NATIVE) {
+      const arr = [];
+      for (const f of files) arr.push({name: f.name, mime: f.type || 'text/plain', content: await f.text()});
+      NATIVE.shareFiles(JSON.stringify(arr));
+      return;
+    }
     try {
       if (navigator.canShare && navigator.canShare({files})) { await navigator.share({files, title}); return; }
     } catch (e) { if (e.name === 'AbortError') return; }
@@ -2142,6 +2326,10 @@
   $('btnDemo').addEventListener('click', () => demoTimer ? stopDemo() : startDemo());
   $('btnStart').addEventListener('click', startWorkout);
   $('btnTest').addEventListener('click', openTestSetup);
+  $('memStart').addEventListener('click', () => { $('memStatus').textContent = 'Iniciando gravação na cinta…'; NATIVE && NATIVE.recStart(); });
+  $('memStop').addEventListener('click', () => { $('memStatus').textContent = 'Parando gravação…'; NATIVE && NATIVE.recStop(); });
+  $('memList').addEventListener('click', () => { $('memItems').innerHTML = '<p class="msg">Lendo a memória da cinta…</p>'; NATIVE && NATIVE.recList(); });
+  $('memItems').addEventListener('click', e => { const b = e.target.closest('[data-mem]'); if (b && NATIVE) { b.textContent = 'Baixando…'; NATIVE.recFetch(+b.dataset.mem); } });
   $('testBack').addEventListener('click', () => { $('testOv').classList.add('hidden'); renderTestCard(); });
   $('tMode').addEventListener('click', e => { const b = e.target.closest('button[data-m]'); if (b) setTMode(b.dataset.m); });
   $('tStartBtn').addEventListener('click', startTest);
@@ -2230,8 +2418,9 @@
   renderHistory();
 
   // ---------- app instalável (PWA) ----------
-  const APP_VERSION = '2026-11-21.3';
-  $('appVer').textContent = APP_VERSION;
+  const APP_VERSION = '2026-11-21.4';
+  $('appVer').textContent = APP_VERSION + (NATIVE ? ' · app Android ' + NATIVE.version() : '');
+  nativeInit();
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }

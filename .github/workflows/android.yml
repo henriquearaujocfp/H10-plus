@@ -1,0 +1,73 @@
+name: App Android
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.12'
+
+      - name: Compilar APK
+        working-directory: android
+        run: gradle assembleRelease --no-daemon --stacktrace 2>&1 | tee ../build.log
+
+      - name: Publicar log da compilação (branch ci-logs)
+        if: always()
+        env:
+          STATUS: ${{ job.status }}
+        run: |
+          mkdir -p /tmp/ci
+          cp build.log /tmp/ci/build.log 2>/dev/null || echo "sem log" > /tmp/ci/build.log
+          grep -nE "^e: |error:|FAILURE|What went wrong|Could not|BUILD (SUCCESSFUL|FAILED)" /tmp/ci/build.log | head -200 > /tmp/ci/erros.txt || true
+          echo "status=$STATUS run=$GITHUB_RUN_NUMBER sha=$GITHUB_SHA" > /tmp/ci/status.txt
+          git config user.name "ci"
+          git config user.email "ci@users.noreply.github.com"
+          git checkout --orphan ci-logs-tmp
+          git rm -rf --quiet . || true
+          cp /tmp/ci/* .
+          git add build.log erros.txt status.txt
+          git commit -qm "log run $GITHUB_RUN_NUMBER ($STATUS)"
+          git push -f origin HEAD:ci-logs
+
+      - name: Preparar APK
+        if: success()
+        run: |
+          git checkout --quiet "$GITHUB_SHA"
+          ls -la android/app/build/outputs/apk/release/
+          cp android/app/build/outputs/apk/release/app-release.apk h10plus.apk
+          echo "{\"build\": $GITHUB_RUN_NUMBER, \"version\": \"1.0.$GITHUB_RUN_NUMBER\", \"sha\": \"$GITHUB_SHA\"}" > android-version.json
+
+      - name: Publicar release
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-latest
+          name: "App Android · build ${{ github.run_number }}"
+          body: "build=${{ github.run_number }}\nBaixe o arquivo h10plus.apk e instale no celular."
+          make_latest: true
+          files: |
+            h10plus.apk
+            android-version.json
