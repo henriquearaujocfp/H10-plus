@@ -32,7 +32,9 @@ jobs:
 
       - name: Compilar APK
         working-directory: android
-        run: gradle assembleRelease --no-daemon --stacktrace 2>&1 | tee ../build.log
+        run: |
+          set -o pipefail
+          gradle assembleRelease --no-daemon --stacktrace 2>&1 | tee ../build.log
 
       - name: Publicar log da compilação (branch ci-logs)
         if: always()

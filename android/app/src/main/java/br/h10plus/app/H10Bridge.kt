@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.Looper
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
+import com.polar.androidcommunications.api.ble.model.DisInfo
 import com.polar.sdk.api.PolarBleApi
 import com.polar.sdk.api.PolarBleApiCallback
 import com.polar.sdk.api.PolarBleApiDefaultImpl
@@ -13,6 +14,7 @@ import com.polar.sdk.api.PolarH10OfflineExerciseApi
 import com.polar.sdk.api.model.EcgSample
 import com.polar.sdk.api.model.PolarDeviceInfo
 import com.polar.sdk.api.model.PolarExerciseEntry
+import com.polar.sdk.api.model.PolarHealthThermometerData
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -89,6 +91,10 @@ class H10Bridge(private val act: MainActivity, private val web: WebView) {
             override fun batteryLevelReceived(identifier: String, level: Int) {
                 emit("battery", JSONObject().put("level", level))
             }
+
+            override fun disInformationReceived(identifier: String, disInfo: DisInfo) {}
+
+            override fun htsNotificationReceived(identifier: String, data: PolarHealthThermometerData) {}
         })
     }
 
@@ -298,7 +304,7 @@ class H10Bridge(private val act: MainActivity, private val web: WebView) {
     fun keepScreenOn(on: Boolean) = act.setKeepScreenOn(on)
 
     @JavascriptInterface
-    fun setImmersive(on: Boolean) = act.setImmersive(on)
+    fun setImmersive(on: Boolean) = act.setImmersiveMode(on)
 
     @JavascriptInterface
     fun shareFiles(json: String) = act.shareFiles(json)

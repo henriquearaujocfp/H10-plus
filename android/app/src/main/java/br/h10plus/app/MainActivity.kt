@@ -120,7 +120,7 @@ class MainActivity : AppCompatActivity() {
         else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
-    fun setImmersive(on: Boolean) = runOnUiThread {
+    fun setImmersiveMode(on: Boolean) = runOnUiThread {
         val c = WindowInsetsControllerCompat(window, window.decorView)
         if (on) {
             c.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
