@@ -1,0 +1,1133 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0d1117">
+<title>Monitor H10</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root{
+    --bg:#0d1117; --card:#161b22; --line:#30363d; --txt:#e6edf3; --mut:#8b949e;
+    --z1:#4c8bf5; --z2:#2fbf71; --z3:#f2c230; --z4:#f2803a; --z5:#e5484d; --acc:#58a6ff;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,Roboto,sans-serif}
+  main{max-width:560px;margin:0 auto;padding:14px 14px 40px}
+  header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+  h1{font-size:18px;margin:0;font-weight:600}
+  .status{font-size:13px;color:var(--mut);display:flex;align-items:center;gap:6px}
+  .dot{width:9px;height:9px;border-radius:50%;background:#555}
+  .dot.on{background:var(--z2)} .dot.warn{background:var(--z3)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+  .hero{text-align:center;padding:18px 14px}
+  .bpm{font-size:88px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+  .bpm small{font-size:20px;color:var(--mut);font-weight:500;margin-left:4px}
+  .heart{display:inline-block;color:var(--z5);font-size:26px;margin-right:6px;vertical-align:middle}
+  .heart.beat{animation:beat .25s ease-out}
+  @keyframes beat{0%{transform:scale(1.35)}100%{transform:scale(1)}}
+  .zonetag{display:inline-block;margin-top:10px;padding:5px 12px;border-radius:999px;font-size:14px;font-weight:600;background:#222}
+  .sub{margin-top:8px;color:var(--mut);font-size:13px}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .stat{background:#0f141a;border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center}
+  .stat b{display:block;font-size:22px;font-variant-numeric:tabular-nums}
+  .stat span{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
+  canvas{width:100%;height:190px;display:block}
+  .row{display:flex;gap:8px;flex-wrap:wrap}
+  button{flex:1;min-width:120px;padding:13px 10px;border-radius:10px;border:1px solid var(--line);background:#21262d;color:var(--txt);font-size:15px;font-weight:600}
+  button.primary{background:var(--acc);border-color:var(--acc);color:#0d1117}
+  button.rec{background:var(--z5);border-color:var(--z5);color:#fff}
+  button:disabled{opacity:.4}
+  .seg{display:flex;gap:6px;margin-bottom:8px}
+  .seg button{min-width:0;padding:6px;font-size:12px;font-weight:500}
+  .seg button.sel{background:var(--acc);color:#0d1117;border-color:var(--acc)}
+  .zbar{display:flex;align-items:center;gap:8px;margin:6px 0;font-size:13px}
+  .zbar .lbl{width:118px;color:var(--mut)}
+  .zbar .track{flex:1;height:10px;background:#0f141a;border-radius:6px;overflow:hidden}
+  .zbar .fill{height:100%;width:0}
+  .zbar .val{width:58px;text-align:right;font-variant-numeric:tabular-nums}
+  label{font-size:13px;color:var(--mut)}
+  input[type=number]{width:80px;padding:8px;border-radius:8px;border:1px solid var(--line);background:#0f141a;color:var(--txt);font-size:15px}
+  .msg{font-size:13px;line-height:1.45;color:var(--mut)}
+  .msg.err{color:#ff9b9b}
+  h2{font-size:14px;margin:0 0 8px;color:var(--mut);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+  .hidden{display:none !important}
+  select{padding:8px;border-radius:8px;border:1px solid var(--line);background:#0f141a;color:var(--txt);font-size:15px}
+  .overlay{position:fixed;inset:0;z-index:50;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;text-align:center}
+  /* modo foco */
+  #focus{transition:background .6s}
+  #focus .ftop{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;padding:12px 16px;font-size:15px;color:#c9d1d9}
+  #focus .ftop button{flex:0;min-width:0;white-space:nowrap;padding:8px 14px;background:rgba(0,0,0,.35);border-color:rgba(255,255,255,.2)}
+  #fHR{font-size:min(46vw,52vh);font-weight:800;line-height:.9;font-variant-numeric:tabular-nums;letter-spacing:-.03em}
+  #fUnit{font-size:min(6vw,4vh);color:#c9d1d9;margin-top:4px}
+  #fZone{margin-top:3vh;font-size:min(9vw,6vh);font-weight:700;padding:.15em .6em;border-radius:14px}
+  #fBar{display:flex;gap:6px;width:min(88vw,520px);margin-top:3vh;position:relative}
+  #fBar div{flex:1;height:min(3.2vw,22px);border-radius:6px;opacity:.28}
+  #fBar div.on{opacity:1;outline:3px solid #fff}
+  #fSub{margin-top:2.5vh;font-size:min(5vw,3.4vh);color:#c9d1d9;font-variant-numeric:tabular-nums}
+  #fWarn{margin-top:1.5vh;font-size:min(4.5vw,3vh);color:#ffd28a;min-height:1.2em}
+  /* repouso */
+  #restClock{font-size:min(22vw,14vh);font-weight:700;font-variant-numeric:tabular-nums}
+  .prog{width:min(88vw,460px);height:12px;background:#21262d;border-radius:8px;overflow:hidden;margin:14px 0}
+  .prog div{height:100%;width:0;background:var(--acc);transition:width .25s linear}
+  .rgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;width:min(92vw,460px);margin:10px 0}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
+  th,td{padding:6px 4px;border-bottom:1px solid var(--line);text-align:right}
+  th:first-child,td:first-child{text-align:left}
+  th{color:var(--mut);font-weight:500}
+  td button{min-width:0;flex:0;padding:2px 8px;font-size:12px;background:transparent}
+  .trend{height:130px;margin:6px 0 12px}
+  .status-line{font-size:13px;line-height:1.45;margin:4px 0 2px}
+  .good{color:#5fd68f} .bad{color:#ff9b9b} .neu{color:var(--mut)}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Monitor H10</h1>
+    <div class="status"><span id="dot" class="dot"></span><span id="statusTxt">Desconectado</span></div>
+  </header>
+
+  <div id="envMsg" class="card msg err hidden"></div>
+
+  <section class="card hero">
+    <div><span id="heart" class="heart">♥</span><span id="bpm" class="bpm">--</span><small class="bpm" style="font-size:20px">bpm</small></div>
+    <div id="zoneTag" class="zonetag">Sem leitura</div>
+    <div id="sub" class="sub">Bateria: -- · Contato: --</div>
+  </section>
+
+  <section class="card">
+    <div class="grid">
+      <div class="stat"><b id="rmssd">--</b><span>RMSSD 60s (ms)</span></div>
+      <div class="stat"><b id="rr">--</b><span>Último RR (ms)</span></div>
+      <div class="stat"><b id="pct">--</b><span>% FCmáx</span></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="seg" id="winSeg">
+      <button data-w="60">1 min</button>
+      <button data-w="300" class="sel">5 min</button>
+      <button data-w="900">15 min</button>
+      <button data-w="3600">60 min</button>
+    </div>
+    <canvas id="chart"></canvas>
+  </section>
+
+  <section class="card">
+    <h2>ECG bruto · 130 Hz</h2>
+    <canvas id="ecg" style="height:170px;background:#0f141a;border-radius:8px"></canvas>
+    <div class="row" style="margin-top:8px;align-items:center">
+      <button id="btnEcg" disabled>Iniciar ECG</button>
+      <div class="seg" id="ecgSeg" style="flex:1;margin:0">
+        <button data-s="3">3 s</button>
+        <button data-s="6" class="sel">6 s</button>
+        <button data-s="10">10 s</button>
+      </div>
+    </div>
+    <p id="ecgInfo" class="msg">Derivação única do peito. Na tela há um filtro passa-alta (0,5 Hz) que tira a oscilação da linha de base; o CSV guarda o sinal bruto em µV.</p>
+  </section>
+
+  <section class="card">
+    <div class="row">
+      <button id="btnConnect" class="primary">Conectar H10</button>
+      <button id="btnDemo">Modo demo</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button id="btnRec" disabled>● Gravar sessão</button>
+      <button id="btnExport" disabled>Exportar CSV</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button id="btnFocus">⛶ Modo foco (tela cheia)</button>
+    </div>
+    <p id="awakeLbl" class="msg" style="margin:8px 0 0"></p>
+  </section>
+
+  <section class="card">
+    <h2>Repouso · 5 min</h2>
+    <div class="row" style="align-items:center;gap:10px">
+      <label for="restPos">Posição</label>
+      <select id="restPos">
+        <option value="deitado">Deitado</option>
+        <option value="sentado">Sentado</option>
+        <option value="em pé">Em pé</option>
+      </select>
+      <button id="btnRest" class="primary" style="flex:1">Iniciar medição</button>
+    </div>
+    <p class="msg">Protocolo: logo ao acordar, depois de ir ao banheiro, sempre na mesma posição, respirando normalmente. Compare só medições feitas na mesma posição.</p>
+    <p id="restMsg" class="msg err hidden"></p>
+
+    <div class="grid" style="margin:10px 0">
+      <div class="stat"><b id="hLn7">--</b><span>lnRMSSD 7 d</span></div>
+      <div class="stat"><b id="hHr7">--</b><span>FC rep. 7 d</span></div>
+      <div class="stat"><b id="hN">0</b><span>Medições</span></div>
+    </div>
+    <div id="hStatus"></div>
+    <div class="msg" style="margin-top:8px">lnRMSSD (últimos 60 dias)</div>
+    <canvas id="trendLn" class="trend"></canvas>
+    <div class="msg">FC de repouso (últimos 60 dias)</div>
+    <canvas id="trendHr" class="trend"></canvas>
+    <p class="msg">Pontos = medições; linha = média móvel de 7 dias; faixa = sua linha de base (média ± 0,5 DP dos últimos 60 dias, mínimo de 7 medições).</p>
+    <table id="hTable"></table>
+    <div class="row" style="margin-top:10px">
+      <button id="btnHistExport">Exportar histórico</button>
+      <button id="btnHistImport">Restaurar backup</button>
+      <input id="histFile" type="file" accept=".json,application/json" class="hidden">
+    </div>
+    <p class="msg">O histórico fica salvo neste navegador. Exporte de vez em quando: se o arquivo for aberto de outro lugar, o Chrome pode tratá-lo como outro site e não enxergar os dados.</p>
+  </section>
+
+  <section class="card">
+    <h2>Sessão</h2>
+    <div class="grid" style="margin-bottom:10px">
+      <div class="stat"><b id="dur">00:00</b><span>Duração</span></div>
+      <div class="stat"><b id="avg">--</b><span>FC média</span></div>
+      <div class="stat"><b id="max">--</b><span>FC máx</span></div>
+    </div>
+    <div id="zones"></div>
+  </section>
+
+  <section class="card">
+    <h2>Configuração</h2>
+    <div class="row" style="align-items:center;gap:10px">
+      <label for="fcmax">FC máxima (bpm)</label>
+      <input id="fcmax" type="number" min="120" max="230" value="179">
+      <label for="fcrep">FC repouso</label>
+      <input id="fcrep" type="number" min="30" max="100" value="60">
+    </div>
+    <p class="msg">Zonas por % da FC máxima (50–60, 60–70, 70–80, 80–90, 90–100%). O padrão 179 vem de 220 − idade e de 208 − 0,7 × idade para 41 anos (as duas fórmulas dão ≈179). São estimativas populacionais com erro típico de ±10 bpm; se você tiver FC máx medida em teste, use ela.</p>
+  </section>
+  <p class="msg" style="text-align:center">Versão <span id="appVer"></span></p>
+</main>
+
+<div id="focus" class="overlay hidden">
+  <div class="ftop"><span id="fConn">--</span><button id="fExit">✕ Sair</button></div>
+  <div id="fHR">--</div>
+  <div id="fUnit">bpm</div>
+  <div id="fZone">--</div>
+  <div id="fBar"></div>
+  <div id="fSub">--</div>
+  <div id="fWarn"></div>
+</div>
+
+<div id="restOv" class="overlay hidden">
+  <h2 id="restTitle">Medição de repouso</h2>
+  <div id="restLive">
+    <div id="restClock">5:00</div>
+    <div class="prog"><div id="restProg"></div></div>
+    <div class="rgrid">
+      <div class="stat"><b id="rHr">--</b><span>FC agora</span></div>
+      <div class="stat"><b id="rRm">--</b><span>RMSSD parcial</span></div>
+      <div class="stat"><b id="rN">0</b><span>Batimentos</span></div>
+      <div class="stat"><b id="rArt">--</b><span>Descartados</span></div>
+    </div>
+    <p class="msg">Fique imóvel e respire normalmente. A tela não vai apagar.</p>
+    <div class="row" style="width:min(92vw,460px)"><button id="btnRestCancel">Cancelar</button></div>
+  </div>
+  <div id="restResult" class="hidden" style="width:min(92vw,460px)">
+    <div class="rgrid" style="width:100%">
+      <div class="stat"><b id="xHr">--</b><span>FC média</span></div>
+      <div class="stat"><b id="xRm">--</b><span>RMSSD (ms)</span></div>
+      <div class="stat"><b id="xLn">--</b><span>lnRMSSD</span></div>
+      <div class="stat"><b id="xSd">--</b><span>SDNN (ms)</span></div>
+    </div>
+    <p id="xQual" class="msg"></p>
+    <div class="row"><button id="btnRestSave" class="primary">Salvar</button><button id="btnRestDiscard">Descartar</button></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const ZONES = [
+    {n:'Z1 Recuperação', lo:.50, hi:.60, c:'var(--z1)', hex:'#4c8bf5'},
+    {n:'Z2 Aeróbico',    lo:.60, hi:.70, c:'var(--z2)', hex:'#2fbf71'},
+    {n:'Z3 Tempo',       lo:.70, hi:.80, c:'var(--z3)', hex:'#f2c230'},
+    {n:'Z4 Limiar',      lo:.80, hi:.90, c:'var(--z4)', hex:'#f2803a'},
+    {n:'Z5 Máximo',      lo:.90, hi:1.5, c:'var(--z5)', hex:'#e5484d'},
+  ];
+
+  // ---------- estado ----------
+  let device = null, hrChar = null, demoTimer = null, wakeLock = null;
+  let manualDisconnect = false;
+  const PMD_SVC  = 'fb005c80-02e7-f387-1cad-8acd2d8df0c8';
+  const PMD_CP   = 'fb005c81-02e7-f387-1cad-8acd2d8df0c8';
+  const PMD_DATA = 'fb005c82-02e7-f387-1cad-8acd2d8df0c8';
+  let pmdCP = null, pmdData = null, ecgOn = false, ecgWanted = false;
+  const samples = [];            // {t, hr} para o gráfico (até 60 min)
+  let rrBuf = [];                // {t, rr} últimos 60 s
+  let lastRR = null;
+  let windowSec = 300;
+  let recording = false, rec = null;
+
+  const store = {
+    get(k, d){ try{ const v = localStorage.getItem(k); return v === null ? d : v; }catch(e){ return d; } },
+    set(k, v){ try{ localStorage.setItem(k, v); }catch(e){} }
+  };
+  $('fcmax').value = store.get('fcmax', '179');
+  $('fcrep').value = store.get('fcrep', '60');
+  const fcmax = () => Math.max(100, +$('fcmax').value || 179);
+  $('fcmax').addEventListener('change', () => { store.set('fcmax', $('fcmax').value); renderZones(); draw(); });
+  $('fcrep').addEventListener('change', () => store.set('fcrep', $('fcrep').value));
+
+  // ---------- checagem de ambiente ----------
+  function envCheck(){
+    const m = $('envMsg');
+    if (!('bluetooth' in navigator)) {
+      m.innerHTML = 'Este navegador não expõe Web Bluetooth. Abra este arquivo no <b>Chrome do Android</b> (ou Chrome/Edge no computador). O modo demo funciona em qualquer lugar.';
+      m.classList.remove('hidden'); return false;
+    }
+    if (!window.isSecureContext) {
+      m.innerHTML = 'O Chrome só libera Bluetooth em página segura (HTTPS ou arquivo local). Se a conexão falhar, hospede este arquivo em HTTPS (ex.: GitHub Pages ou Netlify Drop).';
+      m.classList.remove('hidden'); return true;
+    }
+    return true;
+  }
+  envCheck();
+
+  function setStatus(txt, state){
+    $('statusTxt').textContent = txt;
+    $('dot').className = 'dot' + (state ? ' ' + state : '');
+  }
+
+  // ---------- parsing do Heart Rate Measurement (0x2A37) ----------
+  function parseHR(dv){
+    const flags = dv.getUint8(0);
+    let i = 1;
+    const is16 = flags & 0x01;
+    const hr = is16 ? dv.getUint16(i, true) : dv.getUint8(i);
+    i += is16 ? 2 : 1;
+    const contactSupported = (flags >> 2) & 1;
+    const contact = contactSupported ? !!((flags >> 1) & 1) : null;
+    if (flags & 0x08) i += 2; // energia gasta
+    const rr = [];
+    if (flags & 0x10) {
+      while (i + 1 < dv.byteLength) { rr.push(dv.getUint16(i, true) / 1024 * 1000); i += 2; }
+    }
+    return {hr, contact, rr};
+  }
+
+  // ---------- recepção de dados (sensor ou demo) ----------
+  function onReading({hr, contact, rr}){
+    const t = Date.now();
+    if (hr > 0) {
+      samples.push({t, hr});
+      const cutoff = t - 3600e3;
+      while (samples.length && samples[0].t < cutoff) samples.shift();
+    }
+    for (const v of rr) {
+      // filtro simples de artefato: faixa fisiológica e variação < 20% do anterior
+      const ok = v >= 300 && v <= 2000 && (lastRR === null || Math.abs(v - lastRR) / lastRR < 0.2);
+      if (ok) rrBuf.push({t, rr: v});
+      lastRR = v;
+    }
+    rrBuf = rrBuf.filter(x => x.t >= t - 60e3);
+    lastReadingT = t; lastHR = hr; lastContact = contact;
+    if (rest && !rest.done) { if (hr > 0) rest.hr.push(hr); for (const v of rr) rest.rr.push(v); }
+
+    if (recording && hr > 0) {
+      const dt = rec.lastT ? Math.min((t - rec.lastT) / 1000, 5) : 0;
+      rec.lastT = t;
+      rec.rows.push([new Date(t).toISOString(), hr, rr.map(v => v.toFixed(1)).join(';'), contact === null ? '' : (contact ? 1 : 0)]);
+      rec.sum += hr; rec.n++; rec.max = Math.max(rec.max, hr);
+      const z = zoneIndex(hr);
+      if (z >= 0) rec.zoneSec[z] += dt;
+    }
+    updateUI(hr, contact, rr);
+  }
+
+  function zoneIndex(hr){
+    const p = hr / fcmax();
+    for (let k = ZONES.length - 1; k >= 0; k--) if (p >= ZONES[k].lo) return k;
+    return -1;
+  }
+
+  function rmssd(){
+    if (rrBuf.length < 10) return null;
+    let s = 0, n = 0;
+    for (let k = 1; k < rrBuf.length; k++) { const d = rrBuf[k].rr - rrBuf[k-1].rr; s += d*d; n++; }
+    return Math.sqrt(s / n);
+  }
+
+  function updateUI(hr, contact, rr){
+    $('bpm').textContent = hr > 0 ? hr : '--';
+    const h = $('heart'); h.classList.remove('beat'); void h.offsetWidth; h.classList.add('beat');
+    const z = zoneIndex(hr);
+    const tag = $('zoneTag');
+    if (z >= 0) { tag.textContent = ZONES[z].n; tag.style.background = ZONES[z].hex; tag.style.color = '#0d1117'; }
+    else { tag.textContent = 'Abaixo de Z1'; tag.style.background = '#222'; tag.style.color = 'var(--txt)'; }
+    $('pct').textContent = hr > 0 ? Math.round(hr / fcmax() * 100) : '--';
+    if (rr.length) $('rr').textContent = Math.round(rr[rr.length - 1]);
+    const r = rmssd(); $('rmssd').textContent = r === null ? '--' : r.toFixed(0);
+    subLine.contact = contact === null ? 'n/d' : (contact ? 'ok' : 'sem contato');
+    renderSub();
+    if (contact === false) setStatus('Sem contato com a pele', 'warn');
+    else if (device || demoTimer) setStatus(demoTimer ? 'Demo' : 'Conectado', 'on');
+    draw();
+    if (focusOn) renderFocus();
+  }
+
+  const subLine = {battery: '--', contact: '--'};
+  function renderSub(){ $('sub').textContent = `Bateria: ${subLine.battery} · Contato: ${subLine.contact}`; }
+
+  // ---------- conexão Bluetooth ----------
+  async function connect(){
+    if (!envCheck()) return;
+    stopDemo();
+    try {
+      setStatus('Procurando…');
+      device = await navigator.bluetooth.requestDevice({
+        filters: [{services: ['heart_rate']}],
+        optionalServices: ['battery_service', PMD_SVC]
+      });
+      device.addEventListener('gattserverdisconnected', onDisconnected);
+      manualDisconnect = false;
+      await startGatt();
+      $('btnConnect').textContent = 'Desconectar';
+      $('btnRec').disabled = false;
+      requestWakeLock();
+    } catch (e) {
+      device = null;
+      setStatus('Desconectado');
+      if (e.name !== 'NotFoundError') showErr('Falha ao conectar: ' + e.message);
+    }
+  }
+
+  async function startGatt(){
+    setStatus('Conectando…');
+    const server = await device.gatt.connect();
+    const svc = await server.getPrimaryService('heart_rate');
+    hrChar = await svc.getCharacteristic('heart_rate_measurement');
+    hrChar.addEventListener('characteristicvaluechanged', ev => onReading(parseHR(ev.target.value)));
+    await hrChar.startNotifications();
+    setStatus('Conectado', 'on');
+    try {
+      const bs = await server.getPrimaryService('battery_service');
+      const bl = await bs.getCharacteristic('battery_level');
+      const v = await bl.readValue();
+      subLine.battery = v.getUint8(0) + '%'; renderSub();
+    } catch (e) { /* bateria opcional */ }
+    try {
+      const pmd = await server.getPrimaryService(PMD_SVC);
+      pmdCP = await pmd.getCharacteristic(PMD_CP);
+      pmdData = await pmd.getCharacteristic(PMD_DATA);
+      pmdCP.addEventListener('characteristicvaluechanged', ev => onPmdControl(ev.target.value));
+      pmdData.addEventListener('characteristicvaluechanged', ev => onPmdData(ev.target.value));
+      await pmdCP.startNotifications();
+      await pmdData.startNotifications();
+      $('btnEcg').disabled = false;
+      if (ecgWanted) await sendEcgStart(); // retoma após reconexão
+    } catch (e) {
+      pmdCP = pmdData = null;
+      $('btnEcg').disabled = true;
+      $('ecgInfo').textContent = 'Este sensor não expôs o serviço de ECG da Polar (PMD): ' + e.message;
+    }
+  }
+
+  // ---------- ECG via Polar Measurement Data (PMD) ----------
+  async function sendEcgStart(){
+    // 0x02 start · tipo 0x00 ECG · taxa 130 Hz (0x0082) · resolução 14 bits (0x000E)
+    await pmdCP.writeValueWithResponse(new Uint8Array([0x02,0x00,0x00,0x01,0x82,0x00,0x01,0x01,0x0E,0x00]));
+  }
+  async function toggleEcg(){
+    if (demoTimer) { ecgOn ? stopDemoEcg() : startDemoEcg(); return; }
+    if (!pmdCP) return;
+    try {
+      if (!ecgOn) {
+        ecgWanted = true;
+        $('ecgInfo').textContent = 'Iniciando ECG… os primeiros dados levam alguns segundos.';
+        await sendEcgStart();
+      } else {
+        ecgWanted = false;
+        await pmdCP.writeValueWithResponse(new Uint8Array([0x03, 0x00]));
+        setEcgOn(false);
+      }
+    } catch (e) { $('ecgInfo').textContent = 'Erro no comando de ECG: ' + e.message; }
+  }
+  const PMD_ERR = {1:'comando inválido',2:'tipo de medida não suportado',3:'não suportado',
+    4:'tamanho inválido',5:'parâmetro inválido',6:'já em andamento',7:'resolução inválida',
+    8:'taxa inválida',9:'faixa inválida',10:'MTU inválido',11:'nº de canais inválido',
+    12:'estado inválido (verifique o contato da cinta)',13:'sensor no carregador'};
+  function onPmdControl(dv){
+    // resposta: 0xF0, opcode, tipo, status, ...
+    if (dv.getUint8(0) !== 0xF0 || dv.byteLength < 4) return;
+    const op = dv.getUint8(1), type = dv.getUint8(2), st = dv.getUint8(3);
+    if (type !== 0x00) return;
+    if (op === 0x02) {
+      if (st === 0 || st === 6) { setEcgOn(true); $('ecgInfo').textContent = 'ECG ativo. Fique parado alguns segundos para o traçado estabilizar.'; }
+      else { ecgWanted = false; setEcgOn(false); $('ecgInfo').textContent = 'O sensor recusou o ECG: ' + (PMD_ERR[st] || 'código ' + st); }
+    }
+  }
+  function onPmdData(dv){
+    if (dv.byteLength < 13 || dv.getUint8(0) !== 0x00) return; // só ECG
+    const ts = dv.getBigUint64(1, true);       // ns, relógio do sensor, refere-se à última amostra
+    const frameType = dv.getUint8(9);
+    if (frameType !== 0x00) return;
+    const n = Math.floor((dv.byteLength - 10) / 3);
+    const vals = new Array(n);
+    for (let k = 0; k < n; k++) {
+      const o = 10 + k * 3;
+      let v = dv.getUint8(o) | (dv.getUint8(o+1) << 8) | (dv.getUint8(o+2) << 16);
+      if (v & 0x800000) v -= 0x1000000;        // complemento de dois, 24 bits
+      vals[k] = v;                              // µV
+    }
+    pushEcg(vals, ts);
+  }
+
+  const ECG_FS = 130, ECG_BUF = ECG_FS * 12;
+  const ecgRaw = new Float32Array(ECG_BUF), ecgFilt = new Float32Array(ECG_BUF);
+  let ecgCount = 0, hpPrevX = 0, hpPrevY = 0, ecgClock = null;
+  const HP_A = 1 / (1 + 2 * Math.PI * 0.5 / ECG_FS); // passa-alta de 1ª ordem, 0,5 Hz
+
+  function pushEcg(vals, tsNs){
+    const nsPer = 1e9 / ECG_FS;
+    for (let k = 0; k < vals.length; k++) {
+      const x = vals[k];
+      const y = HP_A * (hpPrevY + x - hpPrevX);
+      hpPrevX = x; hpPrevY = y;
+      const i = ecgCount % ECG_BUF;
+      ecgRaw[i] = x; ecgFilt[i] = y;
+      ecgCount++;
+      if (recording) {
+        const t = tsNs === null ? '' : (tsNs - BigInt(Math.round((vals.length - 1 - k) * nsPer))).toString();
+        rec.ecg.push(t + ',' + x);
+      }
+    }
+    if (ecgClock === null) ecgClock = {t: performance.now(), n: ecgCount};
+  }
+
+  function setEcgOn(on){
+    ecgOn = on;
+    $('btnEcg').textContent = on ? 'Parar ECG' : 'Iniciar ECG';
+    if (!on) { ecgClock = null; }
+  }
+
+  // demo de ECG sintético (sem sensor)
+  let demoEcgTimer = null, demoPhase = 0;
+  function startDemoEcg(){
+    demoEcgTimer = setInterval(() => {
+      const vals = [];
+      const beat = 60 / Math.max(40, demoHR);
+      for (let k = 0; k < 73; k++) {
+        demoPhase += 1 / ECG_FS; if (demoPhase > beat) demoPhase -= beat;
+        const p = demoPhase;
+        const g = (c, w, a) => a * Math.exp(-((p - c) ** 2) / (2 * w * w));
+        vals.push(Math.round(g(.10,.025,120) - g(.19,.008,150) + g(.21,.010,1300) - g(.23,.009,300) + g(.42,.045,280) + (Math.random()-.5)*25 + 300*Math.sin(Date.now()/2000)));
+      }
+      pushEcg(vals, null);
+    }, 73 / ECG_FS * 1000);
+    setEcgOn(true); $('ecgInfo').textContent = 'ECG sintético (demo).';
+  }
+  function stopDemoEcg(){ clearInterval(demoEcgTimer); demoEcgTimer = null; setEcgOn(false); }
+
+  // desenho com atraso de ~0,7 s para o traçado andar liso entre pacotes (~0,56 s cada)
+  const ecv = $('ecg'), ectx = ecv.getContext('2d');
+  let ecgSec = 6, ecgScale = 1500;
+  function resizeEcg(){
+    const dpr = window.devicePixelRatio || 1;
+    ecv.width = ecv.clientWidth * dpr; ecv.height = ecv.clientHeight * dpr;
+    ectx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener('resize', resizeEcg);
+  function drawEcg(){
+    requestAnimationFrame(drawEcg);
+    const W = ecv.clientWidth, H = ecv.clientHeight;
+    if (!W) return;
+    ectx.clearRect(0, 0, W, H);
+    // grade estilo papel de ECG: linha fina a cada 0,2 s
+    ectx.strokeStyle = '#1f2a33'; ectx.lineWidth = 1;
+    const pxPerS = W / ecgSec;
+    for (let s = 0; s <= ecgSec; s += 0.2) { const xx = Math.round(s * pxPerS) + .5; ectx.beginPath(); ectx.moveTo(xx, 0); ectx.lineTo(xx, H); ectx.stroke(); }
+    if (!ecgClock || ecgCount < 2) {
+      ectx.fillStyle = '#8b949e'; ectx.font = '13px system-ui'; ectx.textAlign = 'center';
+      ectx.fillText(ecgOn ? 'Aguardando dados…' : 'ECG parado', W / 2, H / 2); return;
+    }
+    // amostra "atual" a exibir
+    const delay = Math.round(0.7 * ECG_FS);
+    let cur = ecgClock.n + Math.floor((performance.now() - ecgClock.t) / 1000 * ECG_FS) - delay;
+    if (cur > ecgCount - 1) { cur = ecgCount - 1; ecgClock = {t: performance.now(), n: ecgCount + delay}; }
+    if (cur < ecgCount - delay * 3) { ecgClock = {t: performance.now(), n: ecgCount}; cur = ecgCount - delay; }
+    const N = Math.min(ecgSec * ECG_FS, ECG_BUF, cur + 1);
+    const first = cur - N + 1;
+    // escala automática suave
+    let mn = Infinity, mx = -Infinity;
+    for (let j = first; j <= cur; j++) { const v = ecgFilt[((j % ECG_BUF) + ECG_BUF) % ECG_BUF]; if (v < mn) mn = v; if (v > mx) mx = v; }
+    const span = Math.max(600, (mx - mn) * 1.2);
+    ecgScale += (span - ecgScale) * 0.05;
+    const mid = (mx + mn) / 2;
+    ectx.strokeStyle = '#2fbf71'; ectx.lineWidth = 1.6; ectx.lineJoin = 'round';
+    ectx.beginPath();
+    const total = ecgSec * ECG_FS;
+    for (let j = first; j <= cur; j++) {
+      const v = ecgFilt[((j % ECG_BUF) + ECG_BUF) % ECG_BUF];
+      const xx = W - (cur - j) / total * W;
+      const yy = H / 2 - (v - mid) / ecgScale * H;
+      j === first ? ectx.moveTo(xx, yy) : ectx.lineTo(xx, yy);
+    }
+    ectx.stroke();
+    // barra de escala de 1 mV
+    const mvPx = 1000 / ecgScale * H;
+    if (mvPx < H - 10) {
+      ectx.strokeStyle = '#8b949e'; ectx.lineWidth = 2;
+      ectx.beginPath(); ectx.moveTo(8, H - 8); ectx.lineTo(8, H - 8 - mvPx); ectx.stroke();
+      ectx.fillStyle = '#8b949e'; ectx.font = '10px system-ui'; ectx.textAlign = 'left';
+      ectx.fillText('1 mV', 12, H - 10);
+    }
+  }
+
+  async function onDisconnected(){
+    setEcgOn(false); pmdCP = pmdData = null; $('btnEcg').disabled = true;
+    if (manualDisconnect || !device) { setStatus('Desconectado'); return; }
+    setStatus('Reconectando…', 'warn');
+    for (let a = 1; a <= 5 && device && !manualDisconnect; a++) {
+      try { await startGatt(); return; }
+      catch (e) { await new Promise(r => setTimeout(r, 1500 * a)); }
+    }
+    setStatus('Conexão perdida');
+  }
+
+  function disconnect(){
+    manualDisconnect = true; ecgWanted = false;
+    if (device && device.gatt.connected) device.gatt.disconnect();
+    setEcgOn(false); pmdCP = pmdData = null; $('btnEcg').disabled = true;
+    device = null; hrChar = null;
+    $('btnConnect').textContent = 'Conectar H10';
+    setStatus('Desconectado');
+    if (recording) toggleRec();
+    $('btnRec').disabled = true;
+    releaseWakeLock();
+  }
+
+  function showErr(t){ const m = $('envMsg'); m.textContent = t; m.classList.remove('hidden'); }
+
+  // ---------- modo demo ----------
+  let demoHR = 72, demoTarget = 72, demoTick = 0;
+  function startDemo(){
+    if (device) disconnect();
+    demoTimer = setInterval(() => {
+      demoTick++;
+      if (demoTick % 30 === 0) demoTarget = 70 + Math.random() * 100;
+      demoHR += (demoTarget - demoHR) * 0.08 + (Math.random() - .5) * 2;
+      const hr = Math.round(demoHR);
+      const base = 60000 / hr;
+      const rr = [base + (Math.random() - .5) * 40];
+      onReading({hr, contact: true, rr});
+    }, 1000);
+    subLine.battery = 'demo'; renderSub();
+    setStatus('Demo', 'on');
+    $('btnDemo').textContent = 'Parar demo';
+    $('btnRec').disabled = false;
+    $('btnEcg').disabled = false;
+    syncAwake();
+  }
+  function stopDemo(){
+    if (!demoTimer) return;
+    clearInterval(demoTimer); demoTimer = null;
+    if (demoEcgTimer) stopDemoEcg();
+    $('btnEcg').disabled = true;
+    $('btnDemo').textContent = 'Modo demo';
+    if (recording) toggleRec();
+    $('btnRec').disabled = true;
+    setStatus('Desconectado');
+    syncAwake();
+  }
+
+  // ---------- gravação ----------
+  function toggleRec(){
+    recording = !recording;
+    const b = $('btnRec');
+    if (recording) {
+      rec = {start: Date.now(), lastT: 0, rows: [], ecg: [], sum: 0, n: 0, max: 0, zoneSec: [0,0,0,0,0]};
+      b.textContent = '■ Parar gravação'; b.classList.add('rec');
+      $('btnExport').disabled = true;
+    } else {
+      rec.end = Date.now();
+      b.textContent = '● Gravar sessão'; b.classList.remove('rec');
+      $('btnExport').disabled = rec.rows.length === 0;
+    }
+  }
+
+  async function exportCSV(){
+    if (!rec || !rec.rows.length) return;
+    const head = 'timestamp_utc,hr_bpm,rr_ms,contato\n';
+    const body = rec.rows.map(r => r.join(',')).join('\n');
+    const d = new Date(rec.start);
+    const pad = n => String(n).padStart(2, '0');
+    const name = `h10_${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}.csv`;
+    const files = [new File([head + body], name, {type: 'text/csv'})];
+    if (rec.ecg.length) {
+      const ecgHead = '# ECG Polar H10, 130 Hz, derivacao unica, valores em microvolts\n# sensor_ts_ns = relogio do sensor (ns desde 2000-01-01); vazio no modo demo\nsensor_ts_ns,ecg_uV\n';
+      files.push(new File([ecgHead + rec.ecg.join('\n')], name.replace('.csv', '_ecg.csv'), {type: 'text/csv'}));
+    }
+    try {
+      if (navigator.canShare && navigator.canShare({files})) { await navigator.share({files, title: name}); return; }
+    } catch (e) { if (e.name === 'AbortError') return; }
+    for (const f of files) {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(f); a.download = f.name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      await new Promise(r => setTimeout(r, 400));
+    }
+  }
+
+  // ---------- tela sempre ligada ----------
+  // 1º Screen Wake Lock API; se o navegador recusar, vídeo mudo em loop (técnica alternativa, menos garantida)
+  let awakeMode = '', nsVideo = null, nsTimer = null;
+  function wantAwake(){ return !!(device || demoTimer || focusOn || (rest && !rest.done)); }
+  async function syncAwake(){
+    if (wantAwake()) {
+      if (wakeLock && !wakeLock.released) { updateAwakeLabel(); return; }
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await navigator.wakeLock.request('screen');
+          awakeMode = 'wakelock'; stopVideoFallback();
+          wakeLock.addEventListener('release', () => { if (awakeMode === 'wakelock') awakeMode = ''; updateAwakeLabel(); });
+          updateAwakeLabel(); return;
+        }
+      } catch (e) { /* cai para o modo alternativo */ }
+      startVideoFallback();
+    } else {
+      try { wakeLock && wakeLock.release(); } catch (e) {}
+      wakeLock = null; stopVideoFallback(); awakeMode = '';
+    }
+    updateAwakeLabel();
+  }
+  function startVideoFallback(){
+    if (nsVideo) return;
+    try {
+      const c = document.createElement('canvas'); c.width = c.height = 2;
+      const cx = c.getContext('2d');
+      nsTimer = setInterval(() => { cx.fillStyle = Math.random() < .5 ? '#000' : '#010101'; cx.fillRect(0, 0, 2, 2); }, 500);
+      nsVideo = document.createElement('video');
+      nsVideo.muted = true; nsVideo.playsInline = true; nsVideo.loop = true;
+      nsVideo.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0.01;bottom:0;right:0;pointer-events:none';
+      nsVideo.srcObject = c.captureStream(2);
+      document.body.appendChild(nsVideo);
+      nsVideo.play().then(() => { awakeMode = 'video'; updateAwakeLabel(); }).catch(() => { awakeMode = ''; updateAwakeLabel(); });
+    } catch (e) { awakeMode = ''; }
+  }
+  function stopVideoFallback(){
+    if (nsTimer) clearInterval(nsTimer); nsTimer = null;
+    if (nsVideo) { try { nsVideo.pause(); nsVideo.remove(); } catch (e) {} nsVideo = null; }
+    if (awakeMode === 'video') awakeMode = '';
+  }
+  function updateAwakeLabel(){
+    const el = $('awakeLbl');
+    if (!wantAwake()) { el.textContent = ''; return; }
+    el.textContent = awakeMode === 'wakelock' ? 'Tela sempre ligada: ativa.'
+      : awakeMode === 'video' ? 'Tela sempre ligada: modo alternativo (não garantido neste navegador).'
+      : 'Tela sempre ligada: o navegador recusou. Aumente o tempo de bloqueio do Android durante o uso.';
+  }
+  function requestWakeLock(){ syncAwake(); }
+  function releaseWakeLock(){ syncAwake(); }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncAwake(); });
+
+  // ---------- modo foco ----------
+  let focusOn = false, lastReadingT = 0, lastHR = 0, lastContact = null;
+  $('fBar').innerHTML = ZONES.map(z => `<div style="background:${z.hex}"></div>`).join('');
+  async function enterFocus(){
+    focusOn = true;
+    $('focus').classList.remove('hidden');
+    try { await document.documentElement.requestFullscreen({navigationUI: 'hide'}); } catch (e) {}
+    syncAwake(); renderFocus();
+  }
+  function exitFocus(){
+    focusOn = false;
+    $('focus').classList.add('hidden');
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    syncAwake();
+  }
+  document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && focusOn) exitFocus(); });
+
+  function renderFocus(){
+    const stale = Date.now() - lastReadingT > 5000;
+    const hr = stale ? 0 : lastHR;
+    $('fHR').textContent = hr > 0 ? hr : '--';
+    const z = hr > 0 ? zoneIndex(hr) : -1;
+    const fz = $('fZone');
+    if (z >= 0) {
+      fz.textContent = ZONES[z].n; fz.style.background = ZONES[z].hex; fz.style.color = '#0d1117';
+      $('focus').style.background = `radial-gradient(ellipse at center, ${ZONES[z].hex}40 0%, #0d1117 75%), #0d1117`;
+    } else {
+      fz.textContent = hr > 0 ? 'Abaixo de Z1' : 'Sem sinal'; fz.style.background = '#21262d'; fz.style.color = 'var(--txt)';
+      $('focus').style.background = 'var(--bg)';
+    }
+    [...$('fBar').children].forEach((d, k) => d.classList.toggle('on', k === z));
+    const parts = [];
+    if (hr > 0) parts.push(Math.round(hr / fcmax() * 100) + '% FCmáx');
+    const r = rmssd(); if (r !== null) parts.push('RMSSD ' + r.toFixed(0));
+    if (recording && rec) parts.push('● ' + $('dur').textContent);
+    $('fSub').textContent = parts.join('  ·  ') || '--';
+    $('fWarn').textContent = !(device || demoTimer) ? 'Sensor desconectado'
+      : stale ? 'Sem dados há mais de 5 s' : (lastContact === false ? 'Sem contato com a pele: umedeça os eletrodos' : '');
+    $('fConn').textContent = $('statusTxt').textContent;
+  }
+
+  // ---------- compartilhar/baixar arquivos ----------
+  async function shareFiles(files, title){
+    try {
+      if (navigator.canShare && navigator.canShare({files})) { await navigator.share({files, title}); return; }
+    } catch (e) { if (e.name === 'AbortError') return; }
+    for (const f of files) {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(f); a.download = f.name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      await new Promise(r => setTimeout(r, 400));
+    }
+  }
+
+  // ---------- medição de repouso (5 min) ----------
+  const REST_SEC = 300;
+  let rest = null;
+
+  function analyzeRR(raw){
+    const ok = new Array(raw.length);
+    let rejected = 0;
+    for (let i = 0; i < raw.length; i++) {
+      const v = raw[i];
+      const win = raw.slice(Math.max(0, i - 5), i + 6).filter(x => x >= 300 && x <= 2000).sort((a, b) => a - b);
+      const med = win.length ? win[Math.floor(win.length / 2)] : v;
+      ok[i] = v >= 300 && v <= 2000 && Math.abs(v - med) / med < 0.2;
+      if (!ok[i]) rejected++;
+    }
+    const valid = raw.filter((v, i) => ok[i]);
+    let s = 0, n = 0;
+    for (let i = 1; i < raw.length; i++) if (ok[i] && ok[i-1]) { const d = raw[i] - raw[i-1]; s += d * d; n++; }
+    if (valid.length < 30 || n < 20) return {valid: false, beats: raw.length, artPct: raw.length ? rejected / raw.length * 100 : 0};
+    const mean = valid.reduce((a, b) => a + b, 0) / valid.length;
+    const sdnn = Math.sqrt(valid.reduce((a, b) => a + (b - mean) ** 2, 0) / (valid.length - 1));
+    const rm = Math.sqrt(s / n);
+    return {valid: true, beats: raw.length, artPct: rejected / raw.length * 100,
+            hr: 60000 / mean, rmssd: rm, ln: Math.log(rm), sdnn};
+  }
+
+  function startRest(){
+    const m = $('restMsg');
+    if (!(device || demoTimer)) { m.textContent = 'Conecte o H10 (ou ligue o modo demo) antes de medir.'; m.classList.remove('hidden'); return; }
+    m.classList.add('hidden');
+    rest = {start: Date.now(), rr: [], hr: [], pos: $('restPos').value, done: false, res: null};
+    $('restLive').classList.remove('hidden'); $('restResult').classList.add('hidden');
+    $('restTitle').textContent = 'Medição de repouso · ' + rest.pos;
+    $('restOv').classList.remove('hidden');
+    syncAwake();
+    rest.timer = setInterval(tickRest, 250);
+    tickRest();
+  }
+  function tickRest(){
+    if (!rest) return;
+    const el = (Date.now() - rest.start) / 1000;
+    if (el >= REST_SEC) { finishRest(); return; }
+    const left = Math.ceil(REST_SEC - el);
+    $('restClock').textContent = Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0');
+    $('restProg').style.width = (el / REST_SEC * 100) + '%';
+    $('rHr').textContent = Date.now() - lastReadingT < 5000 && lastHR ? lastHR : '--';
+    $('rN').textContent = rest.rr.length;
+    if (rest.rr.length > 30 && Math.floor(el * 4) % 4 === 0) {
+      const a = analyzeRR(rest.rr);
+      $('rRm').textContent = a.valid ? a.rmssd.toFixed(0) : '--';
+      $('rArt').textContent = a.artPct.toFixed(1) + '%';
+    }
+  }
+  function finishRest(){
+    clearInterval(rest.timer);
+    rest.done = true;
+    const a = analyzeRR(rest.rr);
+    rest.res = a;
+    $('restProg').style.width = '100%';
+    $('restLive').classList.add('hidden'); $('restResult').classList.remove('hidden');
+    $('restTitle').textContent = 'Resultado · ' + rest.pos;
+    if (!a.valid) {
+      ['xHr','xRm','xLn','xSd'].forEach(id => $(id).textContent = '--');
+      $('xQual').innerHTML = '<span class="bad">Dados insuficientes (poucos intervalos RR válidos). Verifique o contato da cinta e repita.</span>';
+      $('btnRestSave').disabled = true;
+    } else {
+      $('xHr').textContent = a.hr.toFixed(0);
+      $('xRm').textContent = a.rmssd.toFixed(1);
+      $('xLn').textContent = a.ln.toFixed(2);
+      $('xSd').textContent = a.sdnn.toFixed(1);
+      const q = a.artPct <= 2 ? '<span class="good">Boa qualidade</span>' : a.artPct <= 5 ? '<span class="neu">Qualidade aceitável</span>' : '<span class="bad">Qualidade baixa: muitos batimentos descartados (movimento, contato ou extrassístoles). Considere repetir.</span>';
+      $('xQual').innerHTML = `${q} · ${a.beats} batimentos, ${a.artPct.toFixed(1)}% descartados.`;
+      $('btnRestSave').disabled = false;
+    }
+    syncAwake();
+  }
+  function closeRest(){
+    if (rest && rest.timer) clearInterval(rest.timer);
+    rest = null;
+    $('restOv').classList.add('hidden');
+    syncAwake();
+  }
+  function saveRest(){
+    const a = rest && rest.res;
+    if (!a || !a.valid) return;
+    hist.push({d: new Date(rest.start).toISOString(), pos: rest.pos, hr: +a.hr.toFixed(1), rmssd: +a.rmssd.toFixed(1),
+               ln: +a.ln.toFixed(3), sdnn: +a.sdnn.toFixed(1), beats: a.beats, art: +a.artPct.toFixed(1)});
+    hist.sort((x, y) => x.d < y.d ? -1 : 1);
+    saveHist();
+    closeRest();
+    renderHistory();
+  }
+
+  // ---------- histórico e tendência ----------
+  const HKEY = 'h10_rest_history_v1';
+  let hist = [];
+  try { hist = JSON.parse(store.get(HKEY, '[]')) || []; } catch (e) { hist = []; }
+  function saveHist(){ store.set(HKEY, JSON.stringify(hist)); }
+  const DAY = 864e5;
+
+  function seriesFor(pos){
+    return hist.filter(h => h.pos === pos).map(h => ({...h, t: Date.parse(h.d)}));
+  }
+  function trendStats(s, key){
+    if (!s.length) return null;
+    const lastT = s[s.length - 1].t;
+    const roll = s.map(p => {
+      const w = s.filter(q => q.t > p.t - 7 * DAY && q.t <= p.t);
+      return w.reduce((a, b) => a + b[key], 0) / w.length;
+    });
+    const base = s.filter(q => q.t > lastT - 60 * DAY).map(q => q[key]);
+    let mean = null, sd = null;
+    if (base.length >= 7) {
+      mean = base.reduce((a, b) => a + b, 0) / base.length;
+      sd = Math.sqrt(base.reduce((a, b) => a + (b - mean) ** 2, 0) / (base.length - 1));
+    }
+    const last7 = s.filter(q => q.t > lastT - 7 * DAY);
+    return {roll, mean, sd, cur: roll[roll.length - 1], n7: last7.length, nBase: base.length};
+  }
+
+  function renderHistory(){
+    const pos = $('restPos').value;
+    const s = seriesFor(pos);
+    $('hN').textContent = s.length;
+    const L = trendStats(s, 'ln'), H = trendStats(s, 'hr');
+    $('hLn7').textContent = L ? L.cur.toFixed(2) : '--';
+    $('hHr7').textContent = H ? H.cur.toFixed(0) : '--';
+    const st = $('hStatus');
+    if (!L) st.innerHTML = '<p class="status-line neu">Nenhuma medição nesta posição ainda.</p>';
+    else if (L.mean === null) st.innerHTML = `<p class="status-line neu">Construindo a linha de base: ${L.nBase}/7 medições nos últimos 60 dias.</p>`;
+    else {
+      const band = (v, m, sd) => v < m - 0.5 * sd ? -1 : v > m + 0.5 * sd ? 1 : 0;
+      const bl = band(L.cur, L.mean, L.sd), bh = band(H.cur, H.mean, H.sd);
+      const lnTxt = bl === 0 ? '<span class="good">dentro da faixa normal</span>'
+        : bl < 0 ? '<span class="bad">abaixo da faixa</span> (menor atividade parassimpática: fadiga acumulada, sono ruim, doença, álcool, estresse)'
+        : '<span class="neu">acima da faixa</span> (em geral boa recuperação; se vier junto com cansaço forte, pode ser saturação após carga muito alta)';
+      const hrTxt = bh === 0 ? '<span class="good">dentro da faixa</span>' : bh > 0 ? '<span class="bad">acima da faixa</span>' : '<span class="good">abaixo da faixa</span>';
+      st.innerHTML = `<p class="status-line">lnRMSSD 7 d: ${lnTxt}. Base ${L.mean.toFixed(2)} ± ${L.sd.toFixed(2)}.</p>
+        <p class="status-line">FC de repouso 7 d: ${hrTxt}. Base ${H.mean.toFixed(0)} ± ${H.sd.toFixed(1)} bpm.</p>
+        ${L.n7 < 3 ? '<p class="status-line neu">Menos de 3 medições nos últimos 7 dias: a média móvel fica pouco confiável.</p>' : ''}`;
+      // FC de repouso alimenta a configuração (usada em estimativas futuras)
+      $('fcrep').value = Math.round(H.cur); store.set('fcrep', $('fcrep').value);
+    }
+    drawTrend($('trendLn'), s, 'ln', L, 2);
+    drawTrend($('trendHr'), s, 'hr', H, 0);
+    const rows = s.slice(-10).reverse();
+    $('hTable').innerHTML = rows.length ? '<tr><th>Data</th><th>FC</th><th>RMSSD</th><th>ln</th><th>Desc.</th><th></th></tr>' +
+      rows.map(h => {
+        const d = new Date(h.t);
+        const ds = d.toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'}) + ' ' + d.toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'});
+        return `<tr><td>${ds}</td><td>${h.hr.toFixed(0)}</td><td>${h.rmssd.toFixed(1)}</td><td>${h.ln.toFixed(2)}</td><td>${h.art}%</td><td><button data-del="${h.d}">×</button></td></tr>`;
+      }).join('') : '';
+  }
+
+  function drawTrend(cv, s, key, st, dec){
+    const dpr = window.devicePixelRatio || 1;
+    cv.width = cv.clientWidth * dpr; cv.height = cv.clientHeight * dpr;
+    const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const W = cv.clientWidth, Hh = cv.clientHeight;
+    c.clearRect(0, 0, W, Hh);
+    c.fillStyle = '#8b949e'; c.font = '11px system-ui';
+    if (!s.length) { c.textAlign = 'center'; c.fillText('Sem dados', W / 2, Hh / 2); return; }
+    const t1 = s[s.length - 1].t + DAY * 0.5, t0 = t1 - 60 * DAY;
+    const pts = s.map((p, i) => ({t: p.t, v: p[key], r: st.roll[i]})).filter(p => p.t >= t0);
+    let vals = pts.map(p => p.v);
+    if (st.mean !== null) vals.push(st.mean - st.sd, st.mean + st.sd);
+    let lo = Math.min(...vals), hi = Math.max(...vals);
+    const pad = (hi - lo) * 0.15 || (key === 'ln' ? 0.2 : 3); lo -= pad; hi += pad;
+    const padL = 34, padB = 14;
+    const x = t => padL + (t - t0) / (t1 - t0) * (W - padL - 6);
+    const y = v => (Hh - padB) - (v - lo) / (hi - lo) * (Hh - padB - 4);
+    if (st.mean !== null) {
+      c.fillStyle = 'rgba(47,191,113,.14)';
+      c.fillRect(padL, y(st.mean + 0.5 * st.sd), W - padL - 6, y(st.mean - 0.5 * st.sd) - y(st.mean + 0.5 * st.sd));
+    }
+    c.fillStyle = '#8b949e'; c.textAlign = 'right'; c.textBaseline = 'middle';
+    c.fillText(hi.toFixed(dec), padL - 4, y(hi)); c.fillText(lo.toFixed(dec), padL - 4, y(lo));
+    c.textBaseline = 'alphabetic'; c.textAlign = 'left'; c.fillText('−60 d', padL, Hh - 2);
+    c.textAlign = 'right'; c.fillText('hoje', W - 6, Hh - 2);
+    c.strokeStyle = '#58a6ff'; c.lineWidth = 2; c.beginPath();
+    pts.forEach((p, i) => i ? c.lineTo(x(p.t), y(p.r)) : c.moveTo(x(p.t), y(p.r))); c.stroke();
+    c.fillStyle = '#c9d1d9';
+    pts.forEach(p => { c.beginPath(); c.arc(x(p.t), y(p.v), 2.5, 0, Math.PI * 2); c.fill(); });
+  }
+
+  async function exportHistory(){
+    if (!hist.length) return;
+    const stamp = new Date().toISOString().slice(0, 10);
+    const csv = 'data_iso,posicao,fc_media,rmssd_ms,ln_rmssd,sdnn_ms,batimentos,descartados_pct\n' +
+      hist.map(h => [h.d, h.pos, h.hr, h.rmssd, h.ln, h.sdnn, h.beats, h.art].join(',')).join('\n');
+    await shareFiles([
+      new File([csv], `h10_repouso_${stamp}.csv`, {type: 'text/csv'}),
+      new File([JSON.stringify(hist)], `h10_repouso_backup_${stamp}.json`, {type: 'application/json'})
+    ], 'Histórico de repouso');
+  }
+  function importHistory(file){
+    const r = new FileReader();
+    r.onload = () => {
+      try {
+        const arr = JSON.parse(r.result);
+        if (!Array.isArray(arr)) throw new Error('formato');
+        const keys = new Set(hist.map(h => h.d));
+        let added = 0;
+        for (const h of arr) if (h && h.d && typeof h.ln === 'number' && !keys.has(h.d)) { hist.push(h); keys.add(h.d); added++; }
+        hist.sort((a, b) => a.d < b.d ? -1 : 1);
+        saveHist(); renderHistory();
+        const m = $('restMsg'); m.textContent = `${added} medições restauradas.`; m.classList.remove('hidden'); m.classList.remove('err');
+      } catch (e) {
+        const m = $('restMsg'); m.textContent = 'Arquivo de backup inválido.'; m.classList.add('err'); m.classList.remove('hidden');
+      }
+    };
+    r.readAsText(file);
+  }
+
+  // ---------- zonas da sessão ----------
+  function renderZones(){
+    const el = $('zones');
+    const fm = fcmax();
+    const total = rec ? rec.zoneSec.reduce((a, b) => a + b, 0) : 0;
+    el.innerHTML = ZONES.map((z, k) => {
+      const lo = Math.round(z.lo * fm), hi = k === 4 ? fm : Math.round(z.hi * fm) - 1;
+      const s = rec ? rec.zoneSec[k] : 0;
+      const pct = total ? s / total * 100 : 0;
+      const mm = Math.floor(s / 60), ss = Math.floor(s % 60);
+      return `<div class="zbar"><span class="lbl">${z.n.split(' ')[0]} ${lo}–${hi}</span>
+        <div class="track"><div class="fill" style="width:${pct}%;background:${z.hex}"></div></div>
+        <span class="val">${mm}:${String(ss).padStart(2,'0')}</span></div>`;
+    }).join('');
+  }
+
+  setInterval(() => {
+    if (!rec) return;
+    const end = recording ? Date.now() : (rec.end || Date.now());
+    const s = Math.floor((end - rec.start) / 1000);
+    const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), ss = s % 60;
+    $('dur').textContent = (h ? h + ':' : '') + String(m).padStart(2,'0') + ':' + String(ss).padStart(2,'0');
+    $('avg').textContent = rec.n ? Math.round(rec.sum / rec.n) : '--';
+    $('max').textContent = rec.max || '--';
+    renderZones();
+  }, 1000);
+
+  // ---------- gráfico ----------
+  const cv = $('chart'), ctx = cv.getContext('2d');
+  function resize(){
+    const dpr = window.devicePixelRatio || 1;
+    cv.width = cv.clientWidth * dpr; cv.height = cv.clientHeight * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    draw();
+  }
+  window.addEventListener('resize', resize);
+
+  function draw(){
+    const W = cv.clientWidth, H = cv.clientHeight;
+    if (!W) return;
+    ctx.clearRect(0, 0, W, H);
+    const now = Date.now(), t0 = now - windowSec * 1000;
+    const vis = samples.filter(s => s.t >= t0);
+    const fm = fcmax();
+    let lo = 50, hi = 190;
+    if (vis.length) {
+      const mn = Math.min(...vis.map(s => s.hr)), mx = Math.max(...vis.map(s => s.hr));
+      lo = Math.max(30, Math.floor((mn - 10) / 10) * 10);
+      hi = Math.min(230, Math.ceil((mx + 10) / 10) * 10);
+    }
+    const padL = 30, padB = 18;
+    const x = t => padL + (t - t0) / (windowSec * 1000) * (W - padL);
+    const y = v => (H - padB) - (v - lo) / (hi - lo) * (H - padB);
+
+    // faixas de zona
+    ZONES.forEach(z => {
+      const a = Math.max(lo, z.lo * fm), b = Math.min(hi, z.hi * fm);
+      if (b <= a) return;
+      ctx.fillStyle = z.hex + '1f';
+      ctx.fillRect(padL, y(b), W - padL, y(a) - y(b));
+    });
+    // grade
+    ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1; ctx.fillStyle = '#8b949e';
+    ctx.font = '11px system-ui'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    for (let v = Math.ceil(lo / 20) * 20; v <= hi; v += 20) {
+      ctx.beginPath(); ctx.moveTo(padL, y(v)); ctx.lineTo(W, y(v)); ctx.stroke();
+      ctx.fillText(v, padL - 4, y(v));
+    }
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    const lbl = windowSec >= 600 ? `${windowSec/60} min` : `${windowSec/60} min`;
+    ctx.fillText('−' + lbl, padL + 16, H - 3); ctx.fillText('agora', W - 18, H - 3);
+
+    if (vis.length < 2) return;
+    ctx.lineWidth = 2.2; ctx.lineJoin = 'round';
+    for (let k = 1; k < vis.length; k++) {
+      const a = vis[k-1], b = vis[k];
+      if (b.t - a.t > 10e3) continue; // lacuna
+      const z = zoneIndex(b.hr);
+      ctx.strokeStyle = z >= 0 ? ZONES[z].hex : '#8b949e';
+      ctx.beginPath(); ctx.moveTo(x(a.t), y(a.hr)); ctx.lineTo(x(b.t), y(b.hr)); ctx.stroke();
+    }
+  }
+
+  // ---------- botões ----------
+  $('btnConnect').addEventListener('click', () => device ? disconnect() : connect());
+  $('btnDemo').addEventListener('click', () => demoTimer ? stopDemo() : startDemo());
+  $('btnRec').addEventListener('click', toggleRec);
+  $('btnExport').addEventListener('click', exportCSV);
+  $('winSeg').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    windowSec = +b.dataset.w;
+    [...$('winSeg').children].forEach(c => c.classList.toggle('sel', c === b));
+    draw();
+  });
+
+  $('btnFocus').addEventListener('click', enterFocus);
+  $('fExit').addEventListener('click', exitFocus);
+  setInterval(() => { if (focusOn) renderFocus(); }, 1000);
+
+  $('btnRest').addEventListener('click', startRest);
+  $('btnRestCancel').addEventListener('click', closeRest);
+  $('btnRestDiscard').addEventListener('click', closeRest);
+  $('btnRestSave').addEventListener('click', saveRest);
+  $('restPos').addEventListener('change', renderHistory);
+  $('btnHistExport').addEventListener('click', exportHistory);
+  $('btnHistImport').addEventListener('click', () => $('histFile').click());
+  $('histFile').addEventListener('change', e => { if (e.target.files[0]) importHistory(e.target.files[0]); e.target.value = ''; });
+  $('hTable').addEventListener('click', e => {
+    const b = e.target.closest('button[data-del]'); if (!b) return;
+    if (b.dataset.armed) { hist = hist.filter(h => h.d !== b.dataset.del); saveHist(); renderHistory(); }
+    else { b.dataset.armed = '1'; b.textContent = 'apagar?'; b.style.color = '#ff9b9b'; setTimeout(() => { if (b.isConnected) { delete b.dataset.armed; b.textContent = '×'; b.style.color = ''; } }, 3000); }
+  });
+  window.addEventListener('resize', renderHistory);
+
+  $('btnEcg').addEventListener('click', toggleEcg);
+  $('ecgSeg').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    ecgSec = +b.dataset.s;
+    [...$('ecgSeg').children].forEach(c => c.classList.toggle('sel', c === b));
+  });
+
+  renderZones();
+  resize();
+  resizeEcg();
+  requestAnimationFrame(drawEcg);
+  renderHistory();
+
+  // ---------- app instalável (PWA) ----------
+  const APP_VERSION = '2026-11-21.1';
+  $('appVer').textContent = APP_VERSION;
+  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+})();
+</script>
+</body>
+</html>
