@@ -133,9 +133,15 @@ class WearActivity : ComponentActivity() {
         }
         tvBottom = label(14f)
         tvHint = label(10f)
-        btnSkip = pill("Pular recuperação", 0x66000000, size = 12f)
+        btnSkip = pill("Pular", 0x66000000, size = 12f)
         btnSkip.setOnClickListener { service(WorkoutService.ACTION_SKIP_RECOVERY) }
-        btnHoldTouch = pill("■ Segure 5 s para encerrar", 0xFFE5484D.toInt(), size = 14f)
+        val holdSize = (sw * 0.40f).toInt()
+        btnHoldTouch = TextView(this).apply {
+            text = "SEGURE\npara encerrar"
+            setTextColor(Color.WHITE); textSize = 13f; gravity = Gravity.CENTER
+            setTypeface(Typeface.DEFAULT, Typeface.BOLD)
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0xFFE5484D.toInt()) }
+        }
         btnHoldTouch.setOnTouchListener { _, ev ->
             when (ev.actionMasked) {
                 MotionEvent.ACTION_DOWN -> startHold()
@@ -149,10 +155,10 @@ class WearActivity : ComponentActivity() {
         runCol.addView(tvBottom, LinearLayout.LayoutParams(-2, -2).apply { topMargin = -dp(2) })
         runCol.addView(tvHint, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(6) })
         runCol.addView(btnSkip, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(6) })
-        runCol.addView(btnHoldTouch, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
-        btnResume = pill("Continuar treino", 0xFF21262D.toInt(), size = 13f)
+        runCol.addView(btnHoldTouch, LinearLayout.LayoutParams(holdSize, holdSize).apply { topMargin = dp(6); gravity = Gravity.CENTER_HORIZONTAL })
+        btnResume = pill("Continuar", 0xCC21262D.toInt(), size = 12f)
         btnResume.setOnClickListener { touchFallbackUntil = 0; cancelHold(); render() }
-        runCol.addView(btnResume, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+        runCol.addView(btnResume, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(6); gravity = Gravity.CENTER_HORIZONTAL })
         runView.addView(runCol, FrameLayout.LayoutParams(-1, -1).apply { setMargins(inset, inset / 2, inset, inset / 2) })
 
         // ---------- tela inicial ----------
@@ -177,7 +183,7 @@ class WearActivity : ComponentActivity() {
         btnStart.setOnClickListener { startWorkout() }
         tvMsg = label(11f, 0xFFFFD28A.toInt())
         val tvInfo = label(10f, 0xFF8B949E.toInt()).apply {
-            text = "Durante o treino a tela fica bloqueada. Para encerrar, aperte Voltar e segure o botão vermelho da tela por 5 s."
+            text = "No treino a tela fica bloqueada. Para encerrar: Voltar e segure o botão vermelho."
         }
         col.addView(tvStatus)
         col.addView(tvIdleHr, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(4) })
@@ -205,6 +211,42 @@ class WearActivity : ComponentActivity() {
         lifecycle.addObserver(ambientObserver)
         loadPhoneConfig()
         requestPermsAndConnect()
+        handleIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    /** h10plus://treino?acao=start|stop&sid=...&t=...&tipo=... enviado pelo app do celular. */
+    private fun handleIntent(intent: Intent?) {
+        val uri = intent?.data ?: return
+        if (uri.scheme != "h10plus") return
+        val sid = uri.getQueryParameter("sid") ?: ""
+        when (uri.getQueryParameter("acao")) {
+            "start" -> {
+                if (inWorkout()) return
+                WorkoutState.type = if (uri.getQueryParameter("tipo") == "forca") "forca" else "cardio"
+                WorkoutState.useGps = WorkoutState.type == "cardio"
+                if (!hasBle()) { requestPermsAndConnect(); return }
+                vibrate(120)
+                val i = Intent(this, WorkoutService::class.java).setAction(WorkoutService.ACTION_START)
+                    .putExtra(WorkoutService.EXTRA_REMOTE, true)
+                    .putExtra(WorkoutService.EXTRA_SID, sid)
+                    .putExtra(WorkoutService.EXTRA_T, uri.getQueryParameter("t")?.toLongOrNull() ?: 0L)
+                try { ContextCompat.startForegroundService(this, i) } catch (e: Exception) { WorkoutState.message = "Erro: ${e.message}" }
+            }
+            "stop" -> {
+                if (!running()) return
+                if (sid.isNotEmpty() && WorkoutState.sid.isNotEmpty() && sid != WorkoutState.sid) return
+                vibrate(400)
+                val i = Intent(this, WorkoutService::class.java).setAction(WorkoutService.ACTION_STOP)
+                    .putExtra(WorkoutService.EXTRA_REMOTE, true)
+                try { ContextCompat.startForegroundService(this, i) } catch (_: Exception) { }
+            }
+        }
+        setIntent(Intent())
     }
 
     override fun onResume() { super.onResume(); ui.post(tick) }
@@ -338,8 +380,7 @@ class WearActivity : ComponentActivity() {
     private fun render() {
         val st = WorkoutState
         val now = System.currentTimeMillis()
-        val fresh = now - st.lastHrMs < 5000
-        val hr = if (fresh) st.hr else 0
+        val hr = st.displayHr(now)
         val workout = inWorkout()
 
         idleView.visibility = if (workout) View.GONE else View.VISIBLE
@@ -392,26 +433,25 @@ class WearActivity : ComponentActivity() {
                     if (st.gpsFix || st.distanceM > 0) km + pace else "Aguardando GPS…"
                 } else "Musculação"
                 val panel = SystemClock.uptimeMillis() < touchFallbackUntil || ring.holdProgress > 0f
-                tvHint.text = when {
-                    ring.holdProgress > 0f -> "Encerrando em ${kotlin.math.ceil((1 - ring.holdProgress) * 5).toInt()} s…"
-                    panel -> "Segure o botão vermelho 5 s"
-                    SystemClock.uptimeMillis() < lockToastUntil -> "🔒 Tela bloqueada · aperte Voltar para encerrar"
-                    else -> "🔒 Aperte Voltar para encerrar"
-                }
+                tvHint.visibility = View.GONE
+                if (SystemClock.uptimeMillis() < lockToastUntil && !panel) tvBottom.text = "🔒 Voltar para encerrar"
+                if (ring.holdProgress > 0f) btnHoldTouch.text = kotlin.math.ceil((1 - ring.holdProgress) * 5).toInt().toString()
+                else btnHoldTouch.text = "SEGURE\npara encerrar"
                 btnHoldTouch.visibility = if (panel) View.VISIBLE else View.GONE
                 btnResume.visibility = if (panel && ring.holdProgress == 0f) View.VISIBLE else View.GONE
+                tvHr.visibility = if (panel) View.GONE else View.VISIBLE
                 tvBottom.visibility = if (panel) View.GONE else View.VISIBLE
                 btnSkip.visibility = View.GONE
             }
             WorkoutState.Phase.RECOVERY -> {
-                tvTop.text = "Recuperação"
-                tvBottom.text = "${st.recoveryLeft} s · parado ou caminhando"
-                tvHint.text = ""
+                tvTop.text = "Recuperação ${st.recoveryLeft} s"
+                tvBottom.text = "parado ou caminhando"
+                tvHint.visibility = View.GONE; tvHr.visibility = View.VISIBLE
                 btnSkip.visibility = View.VISIBLE
                 btnHoldTouch.visibility = View.GONE; btnResume.visibility = View.GONE; tvBottom.visibility = View.VISIBLE
             }
             else -> {
-                tvTop.text = "Salvando…"; tvBottom.text = ""; tvHint.text = ""
+                tvTop.text = "Salvando…"; tvBottom.text = ""; tvHint.visibility = View.GONE; tvHr.visibility = View.VISIBLE
                 btnSkip.visibility = View.GONE; btnHoldTouch.visibility = View.GONE; btnResume.visibility = View.GONE
             }
         }

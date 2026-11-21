@@ -180,6 +180,7 @@
         <div class="stat"><b id="max">--</b><span>FC máx</span></div>
         <div class="stat"><b id="wkTrimp">--</b><span>TRIMP</span></div>
       </div>
+      <p id="wkWatch" class="status-line" style="text-align:center"></p>
       <div id="zones"></div>
       <button class="holdEnd big"><span class="fill"></span><span class="lbl">■ Segure 5 s para encerrar</span></button>
     </div>
@@ -897,11 +898,18 @@
   }
   function setFasted(v){ document.querySelectorAll('.fastedChk').forEach(c => c.checked = v); }
 
-  function startWorkout(){
+  // opts.remote = iniciado pelo relógio (mesmo sid e mesmo instante de início)
+  function startWorkout(opts){
     if (wk) return;
+    const o = opts && opts.remote ? opts : {};
+    const now = Date.now();
+    const start = o.remote && o.t && now - o.t >= 0 && now - o.t < 120000 ? o.t : now;
+    if (o.remote) setType(o.tipo === 'forca' ? 'forca' : 'cardio');
     const fasted = !!document.querySelector('.fastedChk').checked;
-    wk = {id: 'w' + Date.now(), type: selType, fasted, start: Date.now(), samples: [], rows: [], ecg: [],
+    const sid = o.sid || ('w' + start);
+    wk = {id: 'w' + start, sid, type: selType, fasted, start, samples: [], rows: [], ecg: [],
           zoneSec: [0,0,0,0,0], lastT: 0, sum: 0, n: 0, max: 0, trimp: 0, cfg: cfgSnap()};
+    if (!o.remote && NATIVE && NATIVE.wearCmd) NATIVE.wearCmd('start', JSON.stringify({sid, t: start, tipo: selType}));
     hrrCap = null;
     try { navigator.vibrate && navigator.vibrate(60); } catch (e) {}
     updateWkUI(); renderZones(); syncAwake(); saveWip();
@@ -934,13 +942,15 @@
     return out;
   }
 
-  function endWorkout(){
+  function endWorkout(opts){
     if (!wk) return;
+    const remote = !!(opts && opts.remote);
+    if (!remote && NATIVE && NATIVE.wearCmd && wk.sid) NATIVE.wearCmd('stop', JSON.stringify({sid: wk.sid}));
     const end = Date.now();
     // zonas/FCmáx vigentes ao encerrar (um teste no meio do treino pode tê-las atualizado)
     const now = cfgSnap();
     const cfg = {...wk.cfg, fcmax: now.fcmax, zb: now.zb, vt1: now.vt1, vt2: now.vt2};
-    const w = {id: wk.id, type: wk.type, fasted: wk.fasted, start: wk.start, end, cfg,
+    const w = {id: wk.id, sid: wk.sid, type: wk.type, fasted: wk.fasted, start: wk.start, end, cfg,
                hr: toHr1s(wk.samples, wk.start, end), hrr: null};
     workouts.push(w); saveWorkouts();
     lastRaw = {id: w.id, rows: wk.rows, ecg: wk.ecg};
@@ -1135,6 +1145,7 @@
       ${w.recovered ? '<p class="msg">Treino recuperado após o app fechar: o fim registrado é o último dado salvo.</p>' : ''}
       ${w.source === 'cinta' ? '<p class="msg">Importado da memória da cinta (intervalos RR batimento a batimento). Sem recuperação da FC medida.</p>' : ''}
       ${w.source === 'relogio' ? '<p class="msg">Gravado no Galaxy Watch com o H10.</p>' : ''}
+      ${w.source === 'celular+relogio' ? '<p class="msg">Gravado no celular e no Galaxy Watch ao mesmo tempo (percurso e recuperação vindos do relógio).</p>' : ''}
       ${w.gps ? `<section class="card"><h2>Percurso (GPS do relógio)</h2>
         <div class="grid"><div class="stat"><b>${(w.gps.dist / 1000).toFixed(2).replace('.', ',')}</b><span>km</span></div>
         <div class="stat"><b>${fmtPace(w.gps.pace)}</b><span>Ritmo médio</span></div>
@@ -1983,9 +1994,20 @@
   function importWear(js, path){
     let o; try { o = JSON.parse(js); } catch (e) { return; }
     const id = o.id || ('ww' + o.start);
-    if (!workouts.some(w => w.id === id)) {
+    const twin = o.sid ? workouts.find(w => w.sid === o.sid && w.id !== id) : null;
+    if (twin) {
+      // mesmo treino gravado no celular: junta GPS, recuperação e, se faltar, a FC do relógio
+      const g = gpsSummary(o.gps || [], o.dist);
+      if (g) twin.gps = g;
+      if ((!twin.hrr || twin.hrr.fail) && o.hrr && o.hrr.peak && o.hrr.hr60) twin.hrr = {peak: o.hrr.peak, hr60: o.hrr.hr60, drop: o.hrr.peak - o.hrr.hr60};
+      const cover = twin.hr.filter(Boolean).length / Math.max(1, twin.hr.length);
+      const wHr = toHr1s((o.hr || []).map(([ms, b]) => [o.start + ms, b]), twin.start, twin.end);
+      if (cover < 0.6 && wHr.filter(Boolean).length > twin.hr.filter(Boolean).length) twin.hr = wHr;
+      twin.source = 'celular+relogio';
+      saveWorkouts(); wearImported.push(twin.id);
+    } else if (!workouts.some(w => w.id === id)) {
       const samples = (o.hr || []).map(([ms, b]) => [o.start + ms, b]);
-      const w = {id, type: o.type || 'cardio', fasted: false, start: o.start, end: o.end, cfg: cfgSnap(),
+      const w = {id, sid: o.sid, type: o.type || 'cardio', fasted: false, start: o.start, end: o.end, cfg: cfgSnap(),
                  hr: toHr1s(samples, o.start, o.end), source: 'relogio',
                  hrr: o.hrr && o.hrr.peak && o.hrr.hr60 ? {peak: o.hrr.peak, hr60: o.hrr.hr60, drop: o.hrr.peak - o.hrr.hr60} : {fail: true}};
       const g = gpsSummary(o.gps || [], o.dist);
@@ -1996,6 +2018,18 @@
     }
     NATIVE.wearAck(path);
   }
+  let wearLive = null, lastOwnHrT = 0;
+  function handleWearCmd(c){
+    if (!c) return;
+    if (NATIVE.takePendingCmd) NATIVE.takePendingCmd();
+    if (c.acao === 'start' && !wk) {
+      const t = +c.t || 0;
+      if (t && Date.now() - t > 120000) return;   // comando antigo
+      startWorkout({remote: true, sid: c.sid, t, tipo: c.tipo});
+    } else if (c.acao === 'stop' && wk && (!c.sid || c.sid === wk.sid)) {
+      endWorkout({remote: true});
+    }
+  }
   function onWear(d){
     const el = $('wearStatus');
     switch (d.kind) {
@@ -2004,6 +2038,12 @@
           : 'Nenhum relógio conectado ao celular agora.';
         break;
       case 'session': importWear(d.json, d.path); break;
+      case 'cmd': handleWearCmd(d.cmd); break;
+      case 'live':
+        wearLive = {...d, at: Date.now()};
+        // sem cinta no celular: usa a FC enviada pelo relógio
+        if (wk && d.hr > 0 && Date.now() - lastOwnHrT > 4000) onReading({hr: d.hr, contact: null, rr: [], relay: true});
+        break;
       case 'synced':
         if (wearImported.length) {
           $('wearMsg').textContent = `${wearImported.length} treino(s) importado(s) do relógio.`;
@@ -2032,6 +2072,7 @@
       $('wearSyncBtn').onclick = wearSync;
       $('wearApkBtn').onclick = () => NATIVE.openUrl(WEAR_APK);
       NATIVE.wearStatus(); pushWearConfig(); wearSync();
+      try { const pc = NATIVE.takePendingCmd && NATIVE.takePendingCmd(); if (pc) handleWearCmd(JSON.parse(pc)); } catch (e) {}
       document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { NATIVE.wearStatus(); wearSync(); } });
     }
     window.__h10n = (type, d) => {
@@ -2054,7 +2095,7 @@
           } else if (d.state === 'scanning') setStatus('Procurando H10…');
           else if (d.state === 'connecting') setStatus('Conectando…');
           break;
-        case 'hr': onReading({hr: d.hr, contact: d.contact, rr: d.rr || []}); break;
+        case 'hr': lastOwnHrT = Date.now(); onReading({hr: d.hr, contact: d.contact, rr: d.rr || []}); break;
         case 'ecg': pushEcg(d.v, BigInt(d.ts || '0')); if (!ecgOn) setEcgOn(true); break;
         case 'ecgState':
           setEcgOn(!!d.on);
@@ -2271,6 +2312,7 @@
     if (hr > 0) parts.push(Math.round(hr / fcmax() * 100) + '% FCmáx');
     const r = rmssd(); if (r !== null) parts.push('RMSSD ' + r.toFixed(0));
     if (wk) parts.push('● ' + TYPE_LBL[wk.type] + ' ' + fmtDur((Date.now() - wk.start) / 1000));
+    if (wk && window.__wearTxt && window.__wearTxt.includes('km')) parts.push(window.__wearTxt.replace('Relógio: ', ''));
     $('fSub').textContent = parts.join('  ·  ') || '--';
     $('fWarn').textContent = !(device || demoTimer) ? 'Sensor desconectado'
       : stale ? 'Sem dados há mais de 5 s' : (lastContact === false ? 'Sem contato com a pele: umedeça os eletrodos' : '');
@@ -2526,9 +2568,15 @@
     }).join('');
   }
 
+  let liveTick = 0;
   setInterval(() => {
     tickHRR();
     tickTest();
+    if (wk && NATIVE && NATIVE.wearLive && device && Date.now() - lastReadingT < 5000 && (++liveTick % 2 === 0)) NATIVE.wearLive(JSON.stringify({hr: lastHR, sid: wk.sid}));
+    const wl = typeof wearLive !== 'undefined' && wearLive && Date.now() - wearLive.at < 8000 ? wearLive : null;
+    const wtxt = wl && wl.gps ? (wl.fix || wl.dist > 0 ? `Relógio: ${(wl.dist / 1000).toFixed(2).replace('.', ',')} km${wl.pace > 0 && wl.pace < 1800 ? ' · ' + fmtPace(wl.pace) : ''}` : 'Relógio: aguardando GPS…') : (wl ? 'Relógio vinculado' : '');
+    if ($('wkWatch')) $('wkWatch').textContent = wk ? wtxt : '';
+    window.__wearTxt = wk ? wtxt : '';
     if (!wk) return;
     $('wkClock').textContent = fmtDur((Date.now() - wk.start) / 1000);
     $('avg').textContent = wk.n ? Math.round(wk.sum / wk.n) : '--';
@@ -2597,7 +2645,7 @@
   // ---------- botões ----------
   $('btnConnect').addEventListener('click', () => device ? disconnect() : connect());
   $('btnDemo').addEventListener('click', () => demoTimer ? stopDemo() : startDemo());
-  $('btnStart').addEventListener('click', startWorkout);
+  $('btnStart').addEventListener('click', () => startWorkout());
   $('btnTest').addEventListener('click', openTestSetup);
   $('memStart').addEventListener('click', () => { $('memStatus').textContent = 'Iniciando gravação na cinta…'; NATIVE && NATIVE.recStart(); });
   $('memStop').addEventListener('click', () => { $('memStatus').textContent = 'Parando gravação…'; NATIVE && NATIVE.recStop(); });
@@ -2630,7 +2678,7 @@
     store.set('zmode', $('zmode').value); renderZInfo(); renderZones(); draw(); renderTestCard(); pushWearConfig();
   });
   $('peso').addEventListener('change', weightMsg);
-  $('fStart').addEventListener('click', startWorkout);
+  $('fStart').addEventListener('click', () => startWorkout());
   document.querySelectorAll('.holdEnd').forEach(setupHold);
   document.querySelectorAll('.typeSeg').forEach(g => g.addEventListener('click', e => { const b = e.target.closest('button[data-t]'); if (b) setType(b.dataset.t); }));
   document.querySelectorAll('.fastedChk').forEach(c => c.addEventListener('change', () => setFasted(c.checked)));
@@ -2691,7 +2739,7 @@
   renderHistory();
 
   // ---------- app instalável (PWA) ----------
-  const APP_VERSION = '2026-11-21.6';
+  const APP_VERSION = '2026-11-21.7';
   $('appVer').textContent = APP_VERSION + (NATIVE ? ' · app Android ' + NATIVE.version() : '');
   nativeInit();
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

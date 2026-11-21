@@ -6,7 +6,10 @@ import android.os.Handler
 import android.os.Looper
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
+import android.content.Intent
+import androidx.wear.remote.interactions.RemoteActivityHelper
 import com.google.android.gms.wearable.CapabilityClient
+import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.DataMapItem
 import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
@@ -331,6 +334,54 @@ class H10Bridge(private val act: MainActivity, private val web: WebView) {
 
     // ---------------- relógio (Wearable Data Layer) ----------------
     private val wearUris = HashMap<String, android.net.Uri>()
+    @Volatile private var pendingCmd: String? = null
+
+    // dados ao vivo vindos do relógio (FC, distância, ritmo)
+    private val msgListener = MessageClient.OnMessageReceivedListener { ev ->
+        if (ev.path == "/live") {
+            try { emit("wear", JSONObject(String(ev.data)).put("kind", "live")) } catch (_: Exception) { }
+        }
+    }
+    init { try { Wearable.getMessageClient(act).addListener(msgListener) } catch (_: Exception) { } }
+
+    /** Comando vindo do relógio (h10plus://treino?acao=start|stop&...). */
+    fun onDeepLink(uri: android.net.Uri) {
+        if (uri.scheme != "h10plus") return
+        val o = JSONObject()
+        for (k in uri.queryParameterNames) o.put(k, uri.getQueryParameter(k))
+        pendingCmd = o.toString()
+        emit("wear", JSONObject().put("kind", "cmd").put("cmd", o))
+    }
+
+    /** O site pergunta, ao carregar, se o app foi aberto por um comando do relógio. */
+    @JavascriptInterface
+    fun takePendingCmd(): String { val c = pendingCmd ?: ""; pendingCmd = null; return c }
+
+    /** Inicia/encerra o treino no relógio (abre o app de lá se estiver fechado). */
+    @JavascriptInterface
+    fun wearCmd(acao: String, json: String) = main.post {
+        scope.launch {
+            try {
+                val o = JSONObject(json)
+                val b = android.net.Uri.Builder().scheme("h10plus").authority("treino").appendQueryParameter("acao", acao)
+                o.keys().forEach { k -> b.appendQueryParameter(k, o.get(k).toString()) }
+                val intent = Intent(Intent.ACTION_VIEW).addCategory(Intent.CATEGORY_BROWSABLE).setData(b.build())
+                val helper = RemoteActivityHelper(act)
+                for (node in Wearable.getNodeClient(act).connectedNodes.await()) helper.startRemoteActivity(intent, node.id)
+            } catch (e: CancellationException) { throw e } catch (_: Exception) { }
+        }
+    }
+
+    /** Envia a FC do celular ao relógio (usada lá se o relógio perder a cinta). */
+    @JavascriptInterface
+    fun wearLive(json: String) = main.post {
+        scope.launch {
+            try {
+                val client = Wearable.getMessageClient(act)
+                for (node in Wearable.getNodeClient(act).connectedNodes.await()) client.sendMessage(node.id, "/live", json.toByteArray()).await()
+            } catch (e: CancellationException) { throw e } catch (_: Exception) { }
+        }
+    }
 
     @JavascriptInterface
     fun wearStatus() = main.post {
@@ -395,6 +446,7 @@ class H10Bridge(private val act: MainActivity, private val web: WebView) {
     }
 
     fun shutdown() {
+        try { Wearable.getMessageClient(act).removeListener(msgListener) } catch (_: Exception) { }
         health.shutdown()
         scope.cancel()
         try { api.shutDown() } catch (_: Exception) { }

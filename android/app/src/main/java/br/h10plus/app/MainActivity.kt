@@ -113,6 +113,12 @@ class MainActivity : AppCompatActivity() {
         })
 
         if (savedInstanceState != null) web.restoreState(savedInstanceState) else web.loadUrl(APP_URL)
+        intent?.data?.let { bridge.onDeepLink(it) }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        intent.data?.let { bridge.onDeepLink(it) }
     }
 
     fun requestBlePermissions() {

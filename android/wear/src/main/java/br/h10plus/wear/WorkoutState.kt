@@ -24,6 +24,18 @@ object WorkoutState {
     @Volatile var recoveryLeft = 0
     @Volatile var message = ""
 
+    // vínculo com o celular
+    @Volatile var sid = ""
+    @Volatile var remoteHr = 0
+    @Volatile var remoteHrMs = 0L
+
+    /** FC a mostrar: a da cinta conectada ao relógio; se estiver sem dados, a enviada pelo celular. */
+    fun displayHr(now: Long): Int = when {
+        now - lastHrMs < 5000 && hr > 0 -> hr
+        now - remoteHrMs < 6000 && remoteHr > 0 -> remoteHr
+        else -> 0
+    }
+
     // zonas (limites inferiores em bpm) recebidas do celular
     @Volatile var zb = intArrayOf(90, 107, 125, 143, 161)
     @Volatile var fcmax = 179

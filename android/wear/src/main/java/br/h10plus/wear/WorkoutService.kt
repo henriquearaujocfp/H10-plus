@@ -10,6 +10,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.net.Uri
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -21,6 +22,8 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import androidx.wear.ongoing.OngoingActivity
+import androidx.wear.remote.interactions.RemoteActivityHelper
+import com.google.android.gms.wearable.MessageClient
 import androidx.wear.ongoing.Status
 import com.google.android.gms.wearable.Asset
 import com.google.android.gms.wearable.PutDataMapRequest
@@ -60,6 +63,9 @@ class WorkoutService : Service() {
         const val ACTION_STOP = "stop"
         const val ACTION_SKIP_RECOVERY = "skip"
         const val ACTION_QUIT = "quit"
+        const val EXTRA_SID = "sid"
+        const val EXTRA_T = "t"
+        const val EXTRA_REMOTE = "remote"
         private const val CHANNEL = "treino"
         private const val NOTIF_ID = 10
     }
@@ -81,6 +87,49 @@ class WorkoutService : Service() {
     private var hrrHr60 = 0
 
     private val locationListener = LocationListener { onLocation(it) }
+    private var liveJob: Job? = null
+
+    // FC enviada pelo app do celular
+    private val msgListener = MessageClient.OnMessageReceivedListener { ev ->
+        if (ev.path == "/live") try {
+            val o = JSONObject(String(ev.data))
+            WorkoutState.remoteHr = o.optInt("hr", 0)
+            WorkoutState.remoteHrMs = System.currentTimeMillis()
+        } catch (_: Exception) { }
+    }
+
+    /** Abre o app no celular com o comando (h10plus://treino?acao=...). */
+    private fun sendCmdToPhone(acao: String, params: Map<String, String>) {
+        scope.launch {
+            try {
+                val b = Uri.Builder().scheme("h10plus").authority("treino").appendQueryParameter("acao", acao)
+                params.forEach { (k, v) -> b.appendQueryParameter(k, v) }
+                val intent = Intent(Intent.ACTION_VIEW).addCategory(Intent.CATEGORY_BROWSABLE).setData(b.build())
+                val helper = RemoteActivityHelper(this@WorkoutService)
+                for (node in Wearable.getNodeClient(this@WorkoutService).connectedNodes.await()) helper.startRemoteActivity(intent, node.id)
+            } catch (e: CancellationException) { throw e } catch (_: Exception) { }
+        }
+    }
+
+    /** A cada 2 s envia FC, distância e ritmo ao celular. */
+    private fun startLive() {
+        liveJob?.cancel()
+        liveJob = scope.launch {
+            val client = Wearable.getMessageClient(this@WorkoutService)
+            while (WorkoutState.phase == WorkoutState.Phase.RUNNING || WorkoutState.phase == WorkoutState.Phase.RECOVERY) {
+                try {
+                    val now = System.currentTimeMillis()
+                    val o = JSONObject().put("sid", WorkoutState.sid)
+                        .put("hr", if (now - WorkoutState.lastHrMs < 5000) WorkoutState.hr else 0)
+                        .put("dist", WorkoutState.distanceM).put("pace", WorkoutState.paceSecKm)
+                        .put("gps", WorkoutState.useGps).put("fix", WorkoutState.gpsFix)
+                    val nodes = Wearable.getNodeClient(this@WorkoutService).connectedNodes.await()
+                    for (n in nodes) client.sendMessage(n.id, "/live", o.toString().toByteArray()).await()
+                } catch (e: CancellationException) { throw e } catch (_: Exception) { }
+                delay(2000)
+            }
+        }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -89,14 +138,15 @@ class WorkoutService : Service() {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CHANNEL, "Treino", NotificationManager.IMPORTANCE_LOW))
         WorkoutState.loadConfig(this)
+        try { Wearable.getMessageClient(this).addListener(msgListener) } catch (_: Exception) { }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         goForeground(withLocation = WorkoutState.phase == WorkoutState.Phase.RUNNING && WorkoutState.useGps)
         when (intent?.action) {
             ACTION_CONNECT -> ensureConnected()
-            ACTION_START -> startWorkout()
-            ACTION_STOP -> stopWorkout()
+            ACTION_START -> startWorkout(intent)
+            ACTION_STOP -> stopWorkout(intent.getBooleanExtra(EXTRA_REMOTE, false))
             ACTION_SKIP_RECOVERY -> { recJob?.cancel(); finishAndSend() }
             ACTION_QUIT -> quit()
         }
@@ -273,10 +323,16 @@ class WorkoutService : Service() {
     }
 
     // ---------------- treino ----------------
-    private fun startWorkout() {
+    private fun startWorkout(intent: Intent) {
         if (WorkoutState.phase == WorkoutState.Phase.RUNNING) return
+        val remote = intent.getBooleanExtra(EXTRA_REMOTE, false)
         hrSamples.clear(); rrSamples.clear(); gps.clear(); recent.clear(); lastGood = null
-        WorkoutState.startMs = System.currentTimeMillis()
+        val now = System.currentTimeMillis()
+        val t = intent.getLongExtra(EXTRA_T, 0L)
+        // iniciado pelo celular: usa o mesmo instante de início (se for recente) para os dois treinos baterem
+        WorkoutState.startMs = if (remote && t > 0 && now - t in 0..120000) t else now
+        WorkoutState.sid = intent.getStringExtra(EXTRA_SID) ?: "w${WorkoutState.startMs}"
+        if (!remote) sendCmdToPhone("start", mapOf("sid" to WorkoutState.sid, "t" to WorkoutState.startMs.toString(), "tipo" to WorkoutState.type))
         WorkoutState.distanceM = 0.0; WorkoutState.paceSecKm = 0.0; WorkoutState.gpsFix = false
         WorkoutState.phase = WorkoutState.Phase.RUNNING
         WorkoutState.message = ""
@@ -286,10 +342,12 @@ class WorkoutService : Service() {
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "h10plus:treino").apply { acquire(6 * 3600 * 1000L) }
         ensureConnected()
         startGps()
+        startLive()
     }
 
-    private fun stopWorkout() {
+    private fun stopWorkout(remote: Boolean) {
         if (WorkoutState.phase != WorkoutState.Phase.RUNNING) return
+        if (!remote) sendCmdToPhone("stop", mapOf("sid" to WorkoutState.sid))
         val end = System.currentTimeMillis()
         WorkoutState.endMs = end
         stopGps()
@@ -316,6 +374,7 @@ class WorkoutService : Service() {
         val o = JSONObject()
             .put("v", 1)
             .put("id", "ww$start")
+            .put("sid", WorkoutState.sid)
             .put("type", WorkoutState.type)
             .put("start", start).put("end", end)
             .put("dist", WorkoutState.distanceM)
@@ -368,6 +427,8 @@ class WorkoutService : Service() {
     }
 
     override fun onDestroy() {
+        try { Wearable.getMessageClient(this).removeListener(msgListener) } catch (_: Exception) { }
+        liveJob?.cancel()
         stopGps()
         releaseWake()
         scope.cancel()
