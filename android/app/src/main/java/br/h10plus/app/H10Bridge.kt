@@ -6,6 +6,10 @@ import android.os.Handler
 import android.os.Looper
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
+import com.google.android.gms.wearable.CapabilityClient
+import com.google.android.gms.wearable.DataMapItem
+import com.google.android.gms.wearable.PutDataMapRequest
+import com.google.android.gms.wearable.Wearable
 import com.polar.androidcommunications.api.ble.model.DisInfo
 import com.polar.sdk.api.PolarBleApi
 import com.polar.sdk.api.PolarBleApiCallback
@@ -25,9 +29,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.zip.GZIPInputStream
 
 /**
  * Ponte entre o site (JavaScript) e o SDK da Polar.
@@ -322,6 +328,71 @@ class H10Bridge(private val act: MainActivity, private val web: WebView) {
 
     @JavascriptInterface
     fun hcRead(days: Int) = main.post { health.read(days) }
+
+    // ---------------- relógio (Wearable Data Layer) ----------------
+    private val wearUris = HashMap<String, android.net.Uri>()
+
+    @JavascriptInterface
+    fun wearStatus() = main.post {
+        scope.launch {
+            try {
+                val nodes = Wearable.getNodeClient(act).connectedNodes.await()
+                val cap = Wearable.getCapabilityClient(act).getCapability("h10plus_wear", CapabilityClient.FILTER_REACHABLE).await()
+                emit("wear", JSONObject().put("kind", "status").put("nodes", nodes.size)
+                    .put("names", JSONArray(nodes.map { it.displayName })).put("app", cap.nodes.isNotEmpty()))
+            } catch (e: CancellationException) { throw e } catch (e: Exception) {
+                emit("wear", JSONObject().put("kind", "status").put("nodes", 0).put("app", false).put("err", e.message ?: e.toString()))
+            }
+        }
+    }
+
+    /** Lê os treinos que o relógio deixou na Data Layer e entrega ao site. */
+    @JavascriptInterface
+    fun wearSync() = main.post {
+        scope.launch {
+            try {
+                val client = Wearable.getDataClient(act)
+                val buf = client.dataItems.await()
+                var n = 0
+                try {
+                    for (item in buf) {
+                        val path = item.uri.path ?: continue
+                        if (!path.startsWith("/session/")) continue
+                        val asset = DataMapItem.fromDataItem(item).dataMap.getAsset("data") ?: continue
+                        val fd = client.getFdForAsset(asset).await()
+                        val json = GZIPInputStream(fd.inputStream).bufferedReader().use { it.readText() }
+                        wearUris[path] = item.uri
+                        emit("wear", JSONObject().put("kind", "session").put("path", path).put("json", json))
+                        n++
+                    }
+                } finally { buf.release() }
+                emit("wear", JSONObject().put("kind", "synced").put("count", n))
+            } catch (e: CancellationException) { throw e } catch (e: Exception) {
+                emit("wear", JSONObject().put("kind", "error").put("msg", e.message ?: e.toString()))
+            }
+        }
+    }
+
+    /** Depois de importado no site, remove o treino da fila do relógio. */
+    @JavascriptInterface
+    fun wearAck(path: String) = main.post {
+        val uri = wearUris.remove(path) ?: return@post
+        scope.launch { try { Wearable.getDataClient(act).deleteDataItems(uri).await() } catch (_: Exception) { } }
+    }
+
+    /** Envia zonas e FCmáx atuais ao relógio. */
+    @JavascriptInterface
+    fun wearConfig(json: String) = main.post {
+        scope.launch {
+            try {
+                val req = PutDataMapRequest.create("/config").apply {
+                    dataMap.putString("json", json)
+                    dataMap.putLong("t", System.currentTimeMillis())
+                }.asPutDataRequest().setUrgent()
+                Wearable.getDataClient(act).putDataItem(req).await()
+            } catch (_: Exception) { }
+        }
+    }
 
     fun shutdown() {
         health.shutdown()

@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = 'h10plus'
 include ':app'
+include ':wear'

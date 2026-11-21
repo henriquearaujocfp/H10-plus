@@ -60,6 +60,7 @@ jobs:
           git checkout --quiet "$GITHUB_SHA"
           ls -la android/app/build/outputs/apk/release/
           cp android/app/build/outputs/apk/release/app-release.apk h10plus.apk
+          cp android/wear/build/outputs/apk/release/wear-release.apk h10plus-wear.apk
           echo "{\"build\": $GITHUB_RUN_NUMBER, \"version\": \"1.0.$GITHUB_RUN_NUMBER\", \"sha\": \"$GITHUB_SHA\"}" > android-version.json
 
       - name: Publicar release
@@ -68,8 +69,9 @@ jobs:
         with:
           tag_name: android-latest
           name: "App Android · build ${{ github.run_number }}"
-          body: "build=${{ github.run_number }}\nBaixe o arquivo h10plus.apk e instale no celular."
+          body: "build=${{ github.run_number }}\nh10plus.apk: celular · h10plus-wear.apk: Galaxy Watch."
           make_latest: true
           files: |
             h10plus.apk
+            h10plus-wear.apk
             android-version.json
