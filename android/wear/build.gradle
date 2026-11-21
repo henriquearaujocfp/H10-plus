@@ -65,6 +65,7 @@ dependencies {
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.8.7'
     implementation 'com.google.android.gms:play-services-wearable:18.2.0'
     implementation 'androidx.wear:wear-remote-interactions:1.1.0'
+    implementation 'com.google.guava:guava:33.3.1-android'
     // modo sempre ligado (ambient) e atividade em andamento no mostrador
     implementation 'androidx.wear:wear:1.3.0'
     implementation 'androidx.wear:wear-ongoing:1.0.0'
