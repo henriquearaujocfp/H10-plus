@@ -16,9 +16,12 @@ import android.location.LocationManager
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import androidx.wear.ongoing.OngoingActivity
+import androidx.wear.ongoing.Status
 import com.google.android.gms.wearable.Asset
 import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
@@ -109,14 +112,31 @@ class WorkoutService : Service() {
             WorkoutState.Phase.RECOVERY -> "Medindo recuperação…"
             else -> "H10 ${WorkoutState.connState}"
         }
-        return NotificationCompat.Builder(this, CHANNEL)
+        val builder = NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("Monitor H10")
             .setContentText(txt)
             .setOngoing(true)
             .setContentIntent(open)
             .setCategory(NotificationCompat.CATEGORY_WORKOUT)
-            .build()
+        // "atividade em andamento": ícone no mostrador que leva de volta ao treino
+        if (WorkoutState.phase == WorkoutState.Phase.RUNNING || WorkoutState.phase == WorkoutState.Phase.RECOVERY) {
+            try {
+                val zero = SystemClock.elapsedRealtime() - (System.currentTimeMillis() - WorkoutState.startMs)
+                val status = Status.Builder()
+                    .addTemplate("#tipo# · #tempo#")
+                    .addPart("tipo", Status.TextPart(if (WorkoutState.type == "forca") "Musculação" else "Cardio"))
+                    .addPart("tempo", Status.StopwatchPart(zero))
+                    .build()
+                OngoingActivity.Builder(applicationContext, NOTIF_ID, builder)
+                    .setStaticIcon(R.mipmap.ic_launcher)
+                    .setTouchIntent(open)
+                    .setStatus(status)
+                    .build()
+                    .apply(applicationContext)
+            } catch (_: Exception) { }
+        }
+        return builder.build()
     }
 
     private fun goForeground(withLocation: Boolean) {

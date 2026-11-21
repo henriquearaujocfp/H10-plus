@@ -33,6 +33,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
 import androidx.lifecycle.lifecycleScope
+import androidx.wear.ambient.AmbientLifecycleObserver
 import com.google.android.gms.wearable.DataMapItem
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.launch
@@ -74,6 +75,16 @@ class WearActivity : ComponentActivity() {
     private val quickBacks = ArrayDeque<Long>()
     private var touchFallbackUntil = 0L
     private var lockToastUntil = 0L
+    @Volatile private var ambient = false
+
+    // se o relógio escurecer a tela (pulso abaixado, mão sobre a tela), o app continua visível em modo econômico
+    private val ambientObserver by lazy {
+        AmbientLifecycleObserver(this, object : AmbientLifecycleObserver.AmbientLifecycleCallback {
+            override fun onEnterAmbient(ambientDetails: AmbientLifecycleObserver.AmbientDetails) { ambient = true; render() }
+            override fun onExitAmbient() { ambient = false; render() }
+            override fun onUpdateAmbient() { render() }
+        })
+    }
 
     private val permLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         if (hasBle()) service(WorkoutService.ACTION_CONNECT)
@@ -189,6 +200,7 @@ class WearActivity : ComponentActivity() {
             }
         })
 
+        lifecycle.addObserver(ambientObserver)
         loadPhoneConfig()
         requestPermsAndConnect()
     }
@@ -345,8 +357,8 @@ class WearActivity : ComponentActivity() {
 
         idleView.visibility = if (workout) View.GONE else View.VISIBLE
         runView.visibility = if (workout) View.VISIBLE else View.GONE
-        if (workout) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // tela sempre ligada enquanto o app estiver aberto
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         if (!workout) {
             root.setBackgroundColor(Color.BLACK)
@@ -365,9 +377,12 @@ class WearActivity : ComponentActivity() {
         }
 
         val z = if (hr > 0) st.zoneOf(hr) else -1
-        val bg = if (z >= 0) st.zoneColors[z] else 0xFF161B22.toInt()
+        // no modo econômico (ambient) o fundo fica preto e a zona aparece na cor do texto
+        val bg = if (ambient) Color.BLACK else if (z >= 0) st.zoneColors[z] else 0xFF161B22.toInt()
         root.setBackgroundColor(bg)
-        val fg = if (ColorUtils.calculateLuminance(bg) > 0.35) Color.BLACK else Color.WHITE
+        ring.alpha = if (ambient) 0.45f else 1f
+        val fg = if (ambient) (if (z >= 0) st.zoneColors[z] else Color.WHITE)
+                 else if (ColorUtils.calculateLuminance(bg) > 0.35) Color.BLACK else Color.WHITE
         val fgSoft = ColorUtils.setAlphaComponent(fg, 200)
         listOf(tvTop, tvBottom, tvHint).forEach { it.setTextColor(fgSoft) }
         tvZone.setTextColor(fg); tvHr.setTextColor(fg)
