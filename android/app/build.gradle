@@ -7,7 +7,7 @@ def runNumber = (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()
 
 android {
     namespace 'br.h10plus.app'
-    compileSdk 35
+    compileSdk 36
 
     defaultConfig {
         applicationId 'br.h10plus.app'
