@@ -59,10 +59,10 @@
   /* modo foco */
   #focus{transition:background .6s}
   #focus .ftop{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;padding:12px 16px;font-size:15px;color:#c9d1d9}
-  #focus .ftop button{flex:0;min-width:0;white-space:nowrap;padding:8px 14px;background:rgba(0,0,0,.35);border-color:rgba(255,255,255,.2)}
-  #fHR{font-size:min(46vw,52vh);font-weight:800;line-height:.9;font-variant-numeric:tabular-nums;letter-spacing:-.03em}
+  #focus .ftop button{flex:none;min-width:0;white-space:nowrap;padding:8px 14px;background:rgba(0,0,0,.35);border-color:rgba(255,255,255,.2)}
+  #fHR{font-size:min(44vw,40vh);font-weight:800;line-height:.9;font-variant-numeric:tabular-nums;letter-spacing:-.03em}
   #fUnit{font-size:min(6vw,4vh);color:#c9d1d9;margin-top:4px}
-  #fZone{margin-top:3vh;font-size:min(9vw,6vh);font-weight:700;padding:.15em .6em;border-radius:14px}
+  #fZone{margin-top:2vh;font-size:min(9vw,6vh);font-weight:700;padding:.15em .6em;border-radius:14px}
   #fBar{display:flex;gap:6px;width:min(88vw,520px);margin-top:3vh;position:relative}
   #fBar div{flex:1;height:min(3.2vw,22px);border-radius:6px;opacity:.28}
   #fBar div.on{opacity:1;outline:3px solid #fff}
@@ -77,10 +77,43 @@
   th,td{padding:6px 4px;border-bottom:1px solid var(--line);text-align:right}
   th:first-child,td:first-child{text-align:left}
   th{color:var(--mut);font-weight:500}
-  td button{min-width:0;flex:0;padding:2px 8px;font-size:12px;background:transparent}
+  td button{min-width:0;flex:none;padding:2px 8px;font-size:12px;background:transparent}
   .trend{height:130px;margin:6px 0 12px}
   .status-line{font-size:13px;line-height:1.45;margin:4px 0 2px}
   .good{color:#5fd68f} .bad{color:#ff9b9b} .neu{color:var(--mut)}
+  .tabs{display:flex;gap:6px;margin:0 0 12px;position:sticky;top:0;z-index:5;background:var(--bg);padding:6px 0}
+  .tabs button{padding:10px;font-size:14px}
+  .tabs button.sel{background:var(--acc);color:#0d1117;border-color:var(--acc)}
+  button.big{width:100%;padding:16px;font-size:17px;margin-top:10px}
+  .chk{display:flex;align-items:center;gap:8px;margin:6px 0 0;font-size:14px;color:var(--txt)}
+  .chk input{width:20px;height:20px}
+  .typeSeg button{padding:10px;font-size:15px;font-weight:600}
+  .wkhead{display:flex;justify-content:space-between;align-items:baseline;font-size:15px;color:var(--mut)}
+  #wkClock{font-size:34px;font-weight:700;color:var(--txt);font-variant-numeric:tabular-nums}
+  .holdEnd{position:relative;overflow:hidden;background:#3a1d20;border-color:var(--z5);color:#fff;user-select:none;-webkit-user-select:none;touch-action:none;-webkit-touch-callout:none}
+  .holdEnd .fill{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--z5)}
+  .holdEnd .lbl{position:relative}
+  #fCtl{position:absolute;left:0;right:0;bottom:0;padding:12px 16px 18px;display:flex;justify-content:center}
+  #fCtl>div{width:min(92vw,520px)}
+  #fCtl .seg{margin:0}
+  #fCtl .chk{justify-content:center;color:#c9d1d9}
+  .sheet{position:fixed;inset:0;z-index:60;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .sheetHead{position:sticky;top:0;background:var(--bg);display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);z-index:2}
+  .sheetHead button{flex:none;min-width:0;padding:8px 12px;white-space:nowrap}
+  .sheetHead span{font-weight:600}
+  #evalBody{max-width:560px;margin:0 auto;padding:14px 14px 40px}
+  .wkItem{display:block;width:100%;text-align:left;background:#0f141a;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;font-weight:400}
+  .wkItem .t1{display:flex;justify-content:space-between;font-size:14px;font-weight:600}
+  .wkItem .t2{font-size:12.5px;color:var(--mut);margin-top:3px}
+  .zstrip{display:flex;height:7px;border-radius:4px;overflow:hidden;margin-top:7px;background:#21262d}
+  .tag{display:inline-block;font-size:11px;padding:2px 7px;border-radius:999px;background:#21262d;color:var(--mut);margin-left:6px;font-weight:500}
+  .sub3{display:flex;height:26px;border-radius:8px;overflow:hidden;margin:8px 0}
+  .sub3 div{display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#0d1117;white-space:nowrap;overflow:hidden}
+  .conf{font-size:12px;padding:3px 8px;border-radius:6px;display:inline-block;margin-bottom:6px}
+  .conf.low{background:#3a2a12;color:#ffd28a} .conf.mid{background:#1d2b3a;color:#9ccbff}
+  details{margin-top:8px} summary{cursor:pointer;color:var(--acc);font-size:14px}
+  details ul{padding-left:18px;margin:8px 0} details li{font-size:13px;line-height:1.5;color:var(--mut);margin-bottom:6px}
+  .evalChart{height:160px}
 </style>
 </head>
 <body>
@@ -89,8 +122,20 @@
     <h1>Monitor H10</h1>
     <div class="status"><span id="dot" class="dot"></span><span id="statusTxt">Desconectado</span></div>
   </header>
+  <nav class="tabs" id="tabs">
+    <button data-tab="tabMonitor" class="sel">Monitor</button>
+    <button data-tab="tabHist">Histórico</button>
+  </nav>
 
   <div id="envMsg" class="card msg err hidden"></div>
+
+  <div id="wipBanner" class="card hidden">
+    <h2>Treino interrompido</h2>
+    <p id="wipTxt" class="msg"></p>
+    <div class="row"><button id="wipSave" class="primary">Salvar e avaliar</button><button id="wipDiscard">Descartar</button></div>
+  </div>
+
+<div id="tabMonitor">
 
   <section class="card hero">
     <div><span id="heart" class="heart">♥</span><span id="bpm" class="bpm">--</span><small class="bpm" style="font-size:20px">bpm</small></div>
@@ -98,6 +143,38 @@
     <div id="sub" class="sub">Bateria: -- · Contato: --</div>
   </section>
 
+  <section class="card">
+    <div class="row">
+      <button id="btnConnect" class="primary">Conectar H10</button>
+      <button id="btnDemo">Modo demo</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button id="btnFocus">⛶ Modo foco (tela cheia)</button>
+    </div>
+    <p id="awakeLbl" class="msg" style="margin:8px 0 0"></p>
+  </section>
+
+  <section class="card" id="wkCard">
+    <h2>Treino</h2>
+    <div id="wkIdle">
+      <div class="seg typeSeg">
+        <button data-t="cardio" class="sel">Cardio</button>
+        <button data-t="forca">Musculação</button>
+      </div>
+      <label class="chk"><input type="checkbox" class="fastedChk"> Em jejum (8 h ou mais sem comer)</label>
+      <button id="btnStart" class="primary big">▶ Iniciar treino</button>
+    </div>
+    <div id="wkActive" class="hidden">
+      <div class="wkhead"><span id="wkLabel">Cardio</span><span id="wkClock">00:00</span></div>
+      <div class="grid" style="margin:10px 0">
+        <div class="stat"><b id="avg">--</b><span>FC média</span></div>
+        <div class="stat"><b id="max">--</b><span>FC máx</span></div>
+        <div class="stat"><b id="wkTrimp">--</b><span>TRIMP</span></div>
+      </div>
+      <div id="zones"></div>
+      <button class="holdEnd big"><span class="fill"></span><span class="lbl">■ Segure 5 s para encerrar</span></button>
+    </div>
+  </section>
   <section class="card">
     <div class="grid">
       <div class="stat"><b id="rmssd">--</b><span>RMSSD 60s (ms)</span></div>
@@ -130,20 +207,6 @@
     <p id="ecgInfo" class="msg">Derivação única do peito. Na tela há um filtro passa-alta (0,5 Hz) que tira a oscilação da linha de base; o CSV guarda o sinal bruto em µV.</p>
   </section>
 
-  <section class="card">
-    <div class="row">
-      <button id="btnConnect" class="primary">Conectar H10</button>
-      <button id="btnDemo">Modo demo</button>
-    </div>
-    <div class="row" style="margin-top:8px">
-      <button id="btnRec" disabled>● Gravar sessão</button>
-      <button id="btnExport" disabled>Exportar CSV</button>
-    </div>
-    <div class="row" style="margin-top:8px">
-      <button id="btnFocus">⛶ Modo foco (tela cheia)</button>
-    </div>
-    <p id="awakeLbl" class="msg" style="margin:8px 0 0"></p>
-  </section>
 
   <section class="card">
     <h2>Repouso · 5 min</h2>
@@ -179,15 +242,6 @@
     <p class="msg">O histórico fica salvo neste navegador. Exporte de vez em quando: se o arquivo for aberto de outro lugar, o Chrome pode tratá-lo como outro site e não enxergar os dados.</p>
   </section>
 
-  <section class="card">
-    <h2>Sessão</h2>
-    <div class="grid" style="margin-bottom:10px">
-      <div class="stat"><b id="dur">00:00</b><span>Duração</span></div>
-      <div class="stat"><b id="avg">--</b><span>FC média</span></div>
-      <div class="stat"><b id="max">--</b><span>FC máx</span></div>
-    </div>
-    <div id="zones"></div>
-  </section>
 
   <section class="card">
     <h2>Configuração</h2>
@@ -197,10 +251,47 @@
       <label for="fcrep">FC repouso</label>
       <input id="fcrep" type="number" min="30" max="100" value="60">
     </div>
+    <div class="row" style="align-items:center;gap:10px;margin-top:8px">
+      <label for="peso">Peso (kg)</label>
+      <input id="peso" type="number" min="35" max="200" step="0.1" placeholder="--">
+      <label for="idade">Idade</label>
+      <input id="idade" type="number" min="15" max="90" value="41">
+    </div>
     <p class="msg">Zonas por % da FC máxima (50–60, 60–70, 70–80, 80–90, 90–100%). O padrão 179 vem de 220 − idade e de 208 − 0,7 × idade para 41 anos (as duas fórmulas dão ≈179). São estimativas populacionais com erro típico de ±10 bpm; se você tiver FC máx medida em teste, use ela.</p>
   </section>
+</div><!-- /tabMonitor -->
+
+<div id="tabHist" class="hidden">
+  <section class="card">
+    <h2>Carga de treino</h2>
+    <div class="grid">
+      <div class="stat"><b id="l7n">0</b><span>Treinos 7 d</span></div>
+      <div class="stat"><b id="l7t">0:00</b><span>Tempo 7 d</span></div>
+      <div class="stat"><b id="l7trimp">0</b><span>TRIMP 7 d</span></div>
+    </div>
+    <p id="loadTxt" class="msg"></p>
+  </section>
+  <section class="card">
+    <h2>Treinos</h2>
+    <div id="wkList"></div>
+  </section>
+  <section class="card">
+    <h2>Backup</h2>
+    <div class="row">
+      <button id="btnBackup">Backup completo</button>
+      <button id="btnRestore">Restaurar backup</button>
+      <input id="bkFile" type="file" accept=".json,application/json" class="hidden">
+    </div>
+    <p id="bkMsg" class="msg">Inclui treinos e medições de repouso. Os dados ficam só neste celular; faça backup de vez em quando.</p>
+  </section>
+</div>
   <p class="msg" style="text-align:center">Versão <span id="appVer"></span></p>
 </main>
+
+<div id="evalOv" class="sheet hidden">
+  <div class="sheetHead"><button id="evalClose">← Voltar</button><span id="evalTitle"></span></div>
+  <div id="evalBody"></div>
+</div>
 
 <div id="focus" class="overlay hidden">
   <div class="ftop"><span id="fConn">--</span><button id="fExit">✕ Sair</button></div>
@@ -210,6 +301,19 @@
   <div id="fBar"></div>
   <div id="fSub">--</div>
   <div id="fWarn"></div>
+  <div id="fCtl">
+    <div id="fIdle">
+      <div class="seg typeSeg">
+        <button data-t="cardio" class="sel">Cardio</button>
+        <button data-t="forca">Musculação</button>
+      </div>
+      <label class="chk"><input type="checkbox" class="fastedChk"> Em jejum</label>
+      <button id="fStart" class="primary big">▶ Iniciar treino</button>
+    </div>
+    <div id="fActive" class="hidden">
+      <button class="holdEnd big"><span class="fill"></span><span class="lbl">■ Segure 5 s para encerrar</span></button>
+    </div>
+  </div>
 </div>
 
 <div id="restOv" class="overlay hidden">
@@ -261,7 +365,7 @@
   let rrBuf = [];                // {t, rr} últimos 60 s
   let lastRR = null;
   let windowSec = 300;
-  let recording = false, rec = null;
+  let wk = null, hrrCap = null, lastRaw = null, selType = 'cardio';
 
   const store = {
     get(k, d){ try{ const v = localStorage.getItem(k); return v === null ? d : v; }catch(e){ return d; } },
@@ -328,14 +432,8 @@
     lastReadingT = t; lastHR = hr; lastContact = contact;
     if (rest && !rest.done) { if (hr > 0) rest.hr.push(hr); for (const v of rr) rest.rr.push(v); }
 
-    if (recording && hr > 0) {
-      const dt = rec.lastT ? Math.min((t - rec.lastT) / 1000, 5) : 0;
-      rec.lastT = t;
-      rec.rows.push([new Date(t).toISOString(), hr, rr.map(v => v.toFixed(1)).join(';'), contact === null ? '' : (contact ? 1 : 0)]);
-      rec.sum += hr; rec.n++; rec.max = Math.max(rec.max, hr);
-      const z = zoneIndex(hr);
-      if (z >= 0) rec.zoneSec[z] += dt;
-    }
+    if (wk && hr > 0) onWorkoutSample(t, hr, rr, contact);
+    if (hrrCap && hr > 0) hrrCap.samples.push([t, hr]);
     updateUI(hr, contact, rr);
   }
 
@@ -387,7 +485,6 @@
       manualDisconnect = false;
       await startGatt();
       $('btnConnect').textContent = 'Desconectar';
-      $('btnRec').disabled = false;
       requestWakeLock();
     } catch (e) {
       device = null;
@@ -491,9 +588,9 @@
       const i = ecgCount % ECG_BUF;
       ecgRaw[i] = x; ecgFilt[i] = y;
       ecgCount++;
-      if (recording) {
+      if (wk) {
         const t = tsNs === null ? '' : (tsNs - BigInt(Math.round((vals.length - 1 - k) * nsPer))).toString();
-        rec.ecg.push(t + ',' + x);
+        wk.ecg.push(t + ',' + x);
       }
     }
     if (ecgClock === null) ecgClock = {t: performance.now(), n: ecgCount};
@@ -596,8 +693,6 @@
     device = null; hrChar = null;
     $('btnConnect').textContent = 'Conectar H10';
     setStatus('Desconectado');
-    if (recording) toggleRec();
-    $('btnRec').disabled = true;
     releaseWakeLock();
   }
 
@@ -619,7 +714,6 @@
     subLine.battery = 'demo'; renderSub();
     setStatus('Demo', 'on');
     $('btnDemo').textContent = 'Parar demo';
-    $('btnRec').disabled = false;
     $('btnEcg').disabled = false;
     syncAwake();
   }
@@ -629,55 +723,414 @@
     if (demoEcgTimer) stopDemoEcg();
     $('btnEcg').disabled = true;
     $('btnDemo').textContent = 'Modo demo';
-    if (recording) toggleRec();
-    $('btnRec').disabled = true;
     setStatus('Desconectado');
     syncAwake();
   }
 
-  // ---------- gravação ----------
-  function toggleRec(){
-    recording = !recording;
-    const b = $('btnRec');
-    if (recording) {
-      rec = {start: Date.now(), lastT: 0, rows: [], ecg: [], sum: 0, n: 0, max: 0, zoneSec: [0,0,0,0,0]};
-      b.textContent = '■ Parar gravação'; b.classList.add('rec');
-      $('btnExport').disabled = true;
+  // ---------- treino ----------
+  const KCAL_PER_KJ = 1 / 4.184;
+  const fmtDur = s => { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), ss = s % 60;
+    return (h ? h + ':' + String(m).padStart(2, '0') : String(m).padStart(2, '0')) + ':' + String(ss).padStart(2, '0'); };
+  const TYPE_LBL = {cardio: 'Cardio', forca: 'Musculação'};
+
+  function cfgSnap(){
+    return {fcmax: fcmax(), fcrep: Math.max(30, +$('fcrep').value || 60),
+            weight: +$('peso').value || null, age: +$('idade').value || 41};
+  }
+
+  function setType(t){
+    selType = t;
+    document.querySelectorAll('.typeSeg button').forEach(b => b.classList.toggle('sel', b.dataset.t === t));
+  }
+  function setFasted(v){ document.querySelectorAll('.fastedChk').forEach(c => c.checked = v); }
+
+  function startWorkout(){
+    if (wk) return;
+    const fasted = !!document.querySelector('.fastedChk').checked;
+    wk = {id: 'w' + Date.now(), type: selType, fasted, start: Date.now(), samples: [], rows: [], ecg: [],
+          zoneSec: [0,0,0,0,0], lastT: 0, sum: 0, n: 0, max: 0, trimp: 0, cfg: cfgSnap()};
+    hrrCap = null;
+    try { navigator.vibrate && navigator.vibrate(60); } catch (e) {}
+    updateWkUI(); renderZones(); syncAwake(); saveWip();
+  }
+
+  function onWorkoutSample(t, hr, rr, contact){
+    if (!wk) return;
+    const dt = wk.lastT ? Math.min((t - wk.lastT) / 1000, 5) : 0;
+    wk.lastT = t;
+    wk.samples.push([t, hr]);
+    wk.rows.push([new Date(t).toISOString(), hr, rr.map(v => v.toFixed(1)).join(';'), contact === null ? '' : (contact ? 1 : 0)]);
+    wk.sum += hr; wk.n++; wk.max = Math.max(wk.max, hr);
+    const z = zoneIndex(hr);
+    if (z >= 0) wk.zoneSec[z] += dt;
+    const x = Math.min(1, Math.max(0, (hr - wk.cfg.fcrep) / (wk.cfg.fcmax - wk.cfg.fcrep)));
+    wk.trimp += dt / 60 * x * 0.64 * Math.exp(1.92 * x);
+  }
+
+  // amostras irregulares -> série de 1 Hz (0 = sem sinal)
+  function toHr1s(samples, start, end){
+    const N = Math.max(1, Math.ceil((end - start) / 1000));
+    const out = new Array(N).fill(0);
+    let j = 0;
+    for (let i = 0; i < N; i++) {
+      const t = start + i * 1000;
+      while (j + 1 < samples.length && samples[j + 1][0] <= t) j++;
+      const s = samples[j];
+      if (s && Math.abs(s[0] - t) <= 3000) out[i] = s[1];
+    }
+    return out;
+  }
+
+  function endWorkout(){
+    if (!wk) return;
+    const end = Date.now();
+    const w = {id: wk.id, type: wk.type, fasted: wk.fasted, start: wk.start, end, cfg: wk.cfg,
+               hr: toHr1s(wk.samples, wk.start, end), hrr: null};
+    workouts.push(w); saveWorkouts();
+    lastRaw = {id: w.id, rows: wk.rows, ecg: wk.ecg};
+    // pico = maior FC nos últimos 30 s de exercício (definição de Cole et al., 1999: pico até 1 min depois)
+    const last30 = wk.samples.filter(s => s[0] >= end - 30000).map(s => s[1]);
+    hrrCap = {id: w.id, endT: end, peak: last30.length ? Math.max(...last30) : 0, samples: []};
+    wk = null; clearWip();
+    try { navigator.vibrate && navigator.vibrate([90, 60, 90]); } catch (e) {}
+    updateWkUI(); renderZones();
+    if (focusOn) exitFocus();
+    syncAwake();
+    openEval(w.id);
+  }
+
+  function tickHRR(){
+    if (!hrrCap) return;
+    const el = (Date.now() - hrrCap.endT) / 1000;
+    const w = workouts.find(x => x.id === hrrCap.id);
+    if (!w) { hrrCap = null; return; }
+    if (el >= 63) {
+      const target = hrrCap.endT + 60000;
+      let best = null;
+      for (const s of hrrCap.samples) if (Math.abs(s[0] - target) <= 3000 && (!best || Math.abs(s[0] - target) < Math.abs(best[0] - target))) best = s;
+      w.hrr = best && hrrCap.peak ? {peak: hrrCap.peak, hr60: best[1], drop: hrrCap.peak - best[1]} : {fail: true};
+      saveWorkouts(); hrrCap = null;
+    }
+    if (evalId === w.id) renderEvalHRR(w);
+  }
+
+  function updateWkUI(){
+    const on = !!wk;
+    $('wkIdle').classList.toggle('hidden', on); $('wkActive').classList.toggle('hidden', !on);
+    $('fIdle').classList.toggle('hidden', on); $('fActive').classList.toggle('hidden', !on);
+    if (on) { $('wkLabel').textContent = TYPE_LBL[wk.type] + (wk.fasted ? ' · jejum' : ''); }
+  }
+
+  // botão de segurar 5 s
+  const HOLD_MS = 5000;
+  function setupHold(btn){
+    const fill = btn.querySelector('.fill'), lbl = btn.querySelector('.lbl');
+    const base = lbl.textContent;
+    let raf = null, t0 = 0;
+    const reset = () => { if (raf) cancelAnimationFrame(raf); raf = null; fill.style.width = '0%'; lbl.textContent = base; };
+    const step = () => {
+      const p = Math.min(1, (performance.now() - t0) / HOLD_MS);
+      fill.style.width = (p * 100) + '%';
+      lbl.textContent = p < 1 ? `Segurando… ${Math.ceil((1 - p) * HOLD_MS / 1000)} s` : 'Encerrando';
+      if (p >= 1) { raf = null; reset(); endWorkout(); } else raf = requestAnimationFrame(step);
+    };
+    btn.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      try { btn.setPointerCapture(e.pointerId); } catch (err) {}
+      t0 = performance.now();
+      try { navigator.vibrate && navigator.vibrate(25); } catch (err) {}
+      raf = requestAnimationFrame(step);
+    });
+    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => btn.addEventListener(ev, reset));
+    btn.addEventListener('contextmenu', e => e.preventDefault());
+  }
+
+  // ---------- armazenamento ----------
+  const WKEY = 'h10_workouts_v1', WIPKEY = 'h10_wip_v1';
+  let workouts = [];
+  try { workouts = JSON.parse(store.get(WKEY, '[]')) || []; } catch (e) { workouts = []; }
+  function saveWorkouts(){
+    try { localStorage.setItem(WKEY, JSON.stringify(workouts)); }
+    catch (e) { showErr('Não foi possível salvar o histórico (armazenamento cheio?). Faça um backup completo na aba Histórico.'); }
+  }
+  function saveWip(){
+    if (!wk) return;
+    try {
+      localStorage.setItem(WIPKEY, JSON.stringify({id: wk.id, type: wk.type, fasted: wk.fasted, start: wk.start, cfg: wk.cfg,
+        s: wk.samples.map(x => [Math.round((x[0] - wk.start) / 100) / 10, x[1]])}));
+    } catch (e) {}
+  }
+  function clearWip(){ try { localStorage.removeItem(WIPKEY); } catch (e) {} }
+  function checkWip(){
+    let w = null;
+    try { w = JSON.parse(localStorage.getItem(WIPKEY) || 'null'); } catch (e) {}
+    if (!w || !w.s || w.s.length < 10) { clearWip(); return; }
+    const dur = w.s[w.s.length - 1][0];
+    $('wipTxt').textContent = `${TYPE_LBL[w.type]} iniciado em ${new Date(w.start).toLocaleString('pt-BR', {dateStyle: 'short', timeStyle: 'short'})}, ${fmtDur(dur)} gravados. O app foi fechado antes de encerrar.`;
+    $('wipBanner').classList.remove('hidden');
+    $('wipSave').onclick = () => {
+      const samples = w.s.map(x => [w.start + x[0] * 1000, x[1]]);
+      const end = samples[samples.length - 1][0] + 1000;
+      const rec = {id: w.id, type: w.type, fasted: w.fasted, start: w.start, end, cfg: w.cfg, hr: toHr1s(samples, w.start, end), hrr: null, recovered: true};
+      workouts.push(rec); saveWorkouts(); clearWip();
+      $('wipBanner').classList.add('hidden'); openEval(rec.id);
+    };
+    $('wipDiscard').onclick = () => { clearWip(); $('wipBanner').classList.add('hidden'); };
+  }
+  setInterval(saveWip, 5000);
+  window.addEventListener('pagehide', saveWip);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveWip(); });
+
+  // ---------- análise ----------
+  // fração da energia vinda de gordura em função da intensidade relativa (%FCR ≈ %VO2R).
+  // Curva populacional aproximada, pós-absortivo, ativo recreacional:
+  // repouso ~60-66% (van Loon 2001: 66% em treinados), 55% VO2 ~31% e 75% ~21% (treinados),
+  // ~85% VO2máx fat oxidation praticamente desprezível em não treinados.
+  const FAT_CURVE = [[0, .60], [.25, .55], [.45, .45], [.55, .35], [.65, .27], [.75, .18], [.85, .08], [.95, .02], [1, 0]];
+  function fatFrac(x){
+    if (x <= 0) return FAT_CURVE[0][1];
+    for (let i = 1; i < FAT_CURVE.length; i++) {
+      const [x1, y1] = FAT_CURVE[i], [x0, y0] = FAT_CURVE[i - 1];
+      if (x <= x1) return y0 + (y1 - y0) * (x - x0) / (x1 - x0);
+    }
+    return 0;
+  }
+  // Keytel et al. 2005 (homens, sem VO2máx): kJ/min = -55,0969 + 0,6309·FC + 0,1988·peso + 0,2017·idade
+  function kcalPerMin(hr, weight, age){
+    return Math.max(1.2, (-55.0969 + 0.6309 * hr + 0.1988 * weight + 0.2017 * age) * KCAL_PER_KJ);
+  }
+
+  function analyze(w){
+    const {fcmax: fm, fcrep: fr, age} = w.cfg;
+    const weightKnown = !!w.cfg.weight, weight = w.cfg.weight || 75;
+    const hr = w.hr;
+    let n = 0, sum = 0, mx = 0, mn = 999, trimp = 0, kcal = 0, fatE = 0, totE = 0, hiSec = 0;
+    const zoneSec = [0, 0, 0, 0, 0]; let below = 0;
+    for (const h of hr) {
+      if (!h) continue;
+      n++; sum += h; mx = Math.max(mx, h); mn = Math.min(mn, h);
+      const z = (() => { const p = h / fm; for (let k = 4; k >= 0; k--) if (p >= ZONES[k].lo) return k; return -1; })();
+      if (z >= 0) zoneSec[z]++; else below++;
+      if (z >= 3) hiSec++;
+      const x = Math.min(1, Math.max(0, (h - fr) / (fm - fr)));
+      trimp += x * 0.64 * Math.exp(1.92 * x) / 60;
+      const e = kcalPerMin(h, weight, age) / 60;
+      kcal += e; totE += e;
+      let f = fatFrac(x);
+      if (w.fasted && x < 0.70) f = Math.min(0.85, f + 0.08);
+      fatE += e * f;
+    }
+    const durS = hr.length;
+    const durMin = durS / 60;
+    // proteína: <5–10% da energia no exercício (Lemon 1987); sobe com duração longa, jejum/glicogênio baixo
+    let prot = 3;
+    if (w.fasted) prot += 2;
+    if (durMin > 60) prot += Math.min(4, (durMin - 60) / 30 * 1.5);
+    if (hiSec > 20 * 60) prot += 1;
+    if (w.type === 'forca') prot = Math.min(prot, 5);
+    prot = Math.min(10, prot);
+    const fatPct = totE ? fatE / totE * (100 - prot) : 0;
+    const choPct = 100 - prot - fatPct;
+    return {n, durS, cover: durS ? n / durS : 0, avg: n ? sum / n : 0, max: mx, min: n ? mn : 0,
+            pctMax: n ? sum / n / fm * 100 : 0, zoneSec, below, trimp, kcal: weightKnown ? kcal : null,
+            kcalRef: kcal, fatPct, choPct, prot, weightKnown, hiSec};
+  }
+
+  // ---------- avaliação ----------
+  let evalId = null;
+  function openEval(id){
+    const w = workouts.find(x => x.id === id); if (!w) return;
+    evalId = id;
+    const a = analyze(w);
+    const d = new Date(w.start);
+    $('evalTitle').textContent = `${TYPE_LBL[w.type]} · ${d.toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'})} ${d.toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'})}`;
+    const fm = w.cfg.fcmax;
+    const zrows = ZONES.map((z, k) => {
+      const s = a.zoneSec[k], pct = a.n ? s / a.n * 100 : 0;
+      const lo = Math.round(z.lo * fm), hi = k === 4 ? fm : Math.round(z.hi * fm) - 1;
+      return `<div class="zbar"><span class="lbl">${z.n} <small>${lo}–${hi}</small></span><div class="track"><div class="fill" style="width:${pct}%;background:${z.hex}"></div></div><span class="val">${fmtDur(s)}<br><small>${pct.toFixed(0)}%</small></span></div>`;
+    }).join('') + `<div class="zbar"><span class="lbl">Abaixo de Z1</span><div class="track"><div class="fill" style="width:${a.n ? a.below / a.n * 100 : 0}%;background:#8b949e"></div></div><span class="val">${fmtDur(a.below)}<br><small>${(a.n ? a.below / a.n * 100 : 0).toFixed(0)}%</small></span></div>`;
+    const conf = w.type === 'forca'
+      ? '<span class="conf low">Confiabilidade baixa: em musculação a FC não acompanha o gasto real (esforço anaeróbio nas séries, pausas)</span>'
+      : '<span class="conf mid">Estimativa populacional: erro individual pode ser grande</span>';
+    const g = v => a.kcal ? ` · ${v.toFixed(0)} g` : '';
+    const fatG = a.kcal ? a.kcal * a.fatPct / 100 / 9 : 0, choG = a.kcal ? a.kcal * a.choPct / 100 / 4 : 0, protG = a.kcal ? a.kcal * a.prot / 100 / 4 : 0;
+    const cat = a.prot <= 5 ? ['Baixo', 'good'] : a.prot <= 8 ? ['Moderado', 'neu'] : ['Elevado', 'bad'];
+    const catWhy = [];
+    if (w.fasted) catWhy.push('treino em jejum');
+    if (a.durS > 3600) catWhy.push('duração acima de 60 min');
+    if (a.hiSec > 1200) catWhy.push('mais de 20 min em Z4–Z5');
+    const raw = lastRaw && lastRaw.id === w.id;
+    $('evalBody').innerHTML = `
+      ${w.recovered ? '<p class="msg">Treino recuperado após o app fechar: o fim registrado é o último dado salvo.</p>' : ''}
+      <section class="card">
+        <h2>Dados medidos</h2>
+        <div class="grid">
+          <div class="stat"><b>${fmtDur(a.durS)}</b><span>Duração</span></div>
+          <div class="stat"><b>${a.avg.toFixed(0)}</b><span>FC média</span></div>
+          <div class="stat"><b>${a.max || '--'}</b><span>FC máx</span></div>
+          <div class="stat"><b>${a.pctMax.toFixed(0)}%</b><span>FC média/FCmáx</span></div>
+          <div class="stat"><b>${a.trimp.toFixed(0)}</b><span>TRIMP</span></div>
+          <div class="stat"><b>${(a.cover * 100).toFixed(0)}%</b><span>Tempo c/ sinal</span></div>
+        </div>
+        <p class="msg">${w.fasted ? 'Em jejum · ' : ''}FCmáx ${fm} · FC repouso ${w.cfg.fcrep} usadas no cálculo.</p>
+      </section>
+      <section class="card"><h2>Zonas</h2>${zrows}</section>
+      <section class="card"><h2>Frequência cardíaca</h2><canvas id="evalChart" class="evalChart"></canvas></section>
+      <section class="card" id="evalHRR"></section>
+      <section class="card">
+        <h2>Estimativas de energia e substrato</h2>
+        ${conf}
+        <div class="grid" style="grid-template-columns:repeat(2,1fr);margin:6px 0">
+          <div class="stat"><b>${a.kcal ? a.kcal.toFixed(0) : '--'}</b><span>kcal ${a.kcal ? '' : '(informe o peso)'}</span></div>
+          <div class="stat"><b class="${cat[1]}">${cat[0]}</b><span>Catabolismo proteico</span></div>
+        </div>
+        <div class="sub3">
+          <div style="width:${a.fatPct}%;background:#f2c230">${a.fatPct >= 12 ? 'Gordura' : ''}</div>
+          <div style="width:${a.choPct}%;background:#58a6ff">${a.choPct >= 12 ? 'Carboidrato' : ''}</div>
+          <div style="width:${a.prot}%;background:#e5484d"></div>
+        </div>
+        <div class="zbar"><span class="lbl">Gordura</span><span class="val" style="width:auto">${a.fatPct.toFixed(0)}%${g(fatG)}</span></div>
+        <div class="zbar"><span class="lbl">Carboidrato</span><span class="val" style="width:auto">${a.choPct.toFixed(0)}%${g(choG)}</span></div>
+        <div class="zbar"><span class="lbl">Proteína</span><span class="val" style="width:auto">${a.prot.toFixed(1)}%${g(protG)}</span></div>
+        <p class="msg">Catabolismo ${cat[0].toLowerCase()}: proteína estimada em ${a.prot.toFixed(1)}% da energia${catWhy.length ? ' (' + catWhy.join(', ') + ')' : ''}. No exercício, a proteína costuma fornecer menos de 5–10% da energia; sobe com treino longo, jejum e glicogênio baixo.</p>
+        <details><summary>Como foi calculado (dado × estimativa)</summary><ul>
+          <li><b>Medido:</b> FC batimento a batimento, zonas, FC média/máx, tempo com sinal.</li>
+          <li><b>Calculado de forma objetiva:</b> TRIMP de Banister (homens): Σ min × %FCR × 0,64 × e^(1,92 × %FCR), com %FCR = (FC − FCrep)/(FCmáx − FCrep).</li>
+          <li><b>Estimado:</b> kcal pela equação de Keytel et al. (2005), validada em exercício aeróbio contínuo (~57–90% da FCmáx); fora disso e em musculação o erro aumenta.</li>
+          <li><b>Estimado (extrapolação):</b> % gordura × carboidrato. A %FCR aproxima a %VO2 de reserva, que é ligada a uma curva populacional de oxidação de gordura (Romijn 1993, van Loon 2001 e outros): alta em baixa intensidade, queda acima de ~65% do VO2máx, quase nula perto de 85%. Treino em jejum soma +8 pontos abaixo de 70%. Sem medir trocas gasosas (ergoespirometria), o erro individual pode passar de ±15 pontos.</li>
+          <li><b>Estimado (heurística):</b> proteína = 3% + 2 em jejum + até 4 em treinos longos + 1 com &gt;20 min em Z4–Z5, com teto de 5% em musculação e 10% no geral.</li>
+        </ul></details>
+      </section>
+      <div class="row">
+        <button id="evalCsv">Exportar CSV${raw ? (lastRaw.ecg.length ? ' + ECG' : ' + RR') : ''}</button>
+        <button id="evalDel">Excluir treino</button>
+      </div>`;
+    $('evalOv').classList.remove('hidden');
+    $('evalOv').scrollTop = 0;
+    renderEvalHRR(w);
+    requestAnimationFrame(() => drawEvalChart(w));
+    $('evalCsv').onclick = () => exportWorkoutCSV(w);
+    $('evalDel').onclick = e => {
+      const b = e.currentTarget;
+      if (b.dataset.armed) { workouts = workouts.filter(x => x.id !== w.id); saveWorkouts(); closeEval(); renderWkList(); }
+      else { b.dataset.armed = '1'; b.textContent = 'Toque de novo para excluir'; b.style.color = '#ff9b9b'; setTimeout(() => { if (b.isConnected) { delete b.dataset.armed; b.textContent = 'Excluir treino'; b.style.color = ''; } }, 3000); }
+    };
+  }
+  function closeEval(){ evalId = null; $('evalOv').classList.add('hidden'); renderWkList(); }
+
+  function renderEvalHRR(w){
+    const el = $('evalHRR'); if (!el) return;
+    let body;
+    if (hrrCap && hrrCap.id === w.id) {
+      const left = Math.max(0, 60 - Math.floor((Date.now() - hrrCap.endT) / 1000));
+      body = `<p class="status-line">Medindo… <b>${left} s</b>. Mantenha a cinta; fique parado ou caminhe devagar.</p><p class="msg">Pico nos últimos 30 s do treino: ${hrrCap.peak || '--'} bpm · agora: ${lastHR || '--'} bpm</p>`;
+    } else if (w.hrr && !w.hrr.fail) {
+      const ok = w.hrr.drop > 12;
+      const dropTxt = w.hrr.drop >= 0 ? '−' + w.hrr.drop : '+' + (-w.hrr.drop);
+      body = `<div class="grid"><div class="stat"><b>${w.hrr.peak}</b><span>Pico</span></div><div class="stat"><b>${w.hrr.hr60}</b><span>Após 60 s</span></div><div class="stat"><b class="${ok ? 'good' : 'bad'}">${dropTxt}</b><span>Variação (bpm)</span></div></div>
+        <p class="msg">Em teste de esforço, queda de 12 bpm ou menos no 1º minuto foi associada a maior mortalidade (Cole et al., 1999). Só é comparável entre treinos que terminam em esforço alto e com o mesmo tipo de recuperação.</p>`;
+    } else if (w.hrr && w.hrr.fail) {
+      body = '<p class="msg">Não foi possível medir: sem dados da cinta 60 s após o fim.</p>';
     } else {
-      rec.end = Date.now();
-      b.textContent = '● Gravar sessão'; b.classList.remove('rec');
-      $('btnExport').disabled = rec.rows.length === 0;
+      body = '<p class="msg">Não medida neste treino.</p>';
+    }
+    el.innerHTML = '<h2>Recuperação da FC em 1 min</h2>' + body;
+  }
+
+  function drawEvalChart(w){
+    const cv = $('evalChart'); if (!cv) return;
+    const dpr = window.devicePixelRatio || 1;
+    cv.width = cv.clientWidth * dpr; cv.height = cv.clientHeight * dpr;
+    const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const W = cv.clientWidth, H = cv.clientHeight, fm = w.cfg.fcmax;
+    const vals = w.hr.filter(Boolean);
+    if (!vals.length) return;
+    let lo = Math.max(30, Math.floor((Math.min(...vals) - 10) / 10) * 10), hi = Math.min(230, Math.ceil((Math.max(...vals) + 5) / 10) * 10);
+    const padL = 30, padB = 16, N = w.hr.length;
+    const x = i => padL + i / Math.max(1, N - 1) * (W - padL - 4);
+    const y = v => (H - padB) - (v - lo) / (hi - lo) * (H - padB - 4);
+    ZONES.forEach(z => { const a = Math.max(lo, z.lo * fm), b = Math.min(hi, z.hi * fm); if (b > a) { c.fillStyle = z.hex + '1f'; c.fillRect(padL, y(b), W - padL, y(a) - y(b)); } });
+    c.fillStyle = '#8b949e'; c.font = '11px system-ui'; c.textAlign = 'right'; c.textBaseline = 'middle';
+    for (let v = Math.ceil(lo / 20) * 20; v <= hi; v += 20) c.fillText(v, padL - 4, y(v));
+    c.textBaseline = 'alphabetic'; c.textAlign = 'left'; c.fillText('0', padL, H - 2); c.textAlign = 'right'; c.fillText(fmtDur(N), W - 4, H - 2);
+    const step = Math.max(1, Math.floor(N / (W * 1.5)));
+    c.lineWidth = 1.8;
+    let prev = null;
+    for (let i = 0; i < N; i += step) {
+      const v = w.hr[i];
+      if (!v) { prev = null; continue; }
+      if (prev) { const z = zoneIndex(v); c.strokeStyle = z >= 0 ? ZONES[z].hex : '#8b949e'; c.beginPath(); c.moveTo(x(prev[0]), y(prev[1])); c.lineTo(x(i), y(v)); c.stroke(); }
+      prev = [i, v];
     }
   }
 
-  async function exportCSV(){
-    if (!rec || !rec.rows.length) return;
-    const head = 'timestamp_utc,hr_bpm,rr_ms,contato\n';
-    const body = rec.rows.map(r => r.join(',')).join('\n');
-    const d = new Date(rec.start);
-    const pad = n => String(n).padStart(2, '0');
-    const name = `h10_${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}.csv`;
-    const files = [new File([head + body], name, {type: 'text/csv'})];
-    if (rec.ecg.length) {
-      const ecgHead = '# ECG Polar H10, 130 Hz, derivacao unica, valores em microvolts\n# sensor_ts_ns = relogio do sensor (ns desde 2000-01-01); vazio no modo demo\nsensor_ts_ns,ecg_uV\n';
-      files.push(new File([ecgHead + rec.ecg.join('\n')], name.replace('.csv', '_ecg.csv'), {type: 'text/csv'}));
+  async function exportWorkoutCSV(w){
+    const d = new Date(w.start), pad = n => String(n).padStart(2, '0');
+    const name = `h10_${w.type}_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
+    const files = [];
+    if (lastRaw && lastRaw.id === w.id && lastRaw.rows.length) {
+      files.push(new File(['timestamp_utc,hr_bpm,rr_ms,contato\n' + lastRaw.rows.map(r => r.join(',')).join('\n')], name + '_rr.csv', {type: 'text/csv'}));
+      if (lastRaw.ecg.length) files.push(new File(['# ECG Polar H10, 130 Hz, microvolts\nsensor_ts_ns,ecg_uV\n' + lastRaw.ecg.join('\n')], name + '_ecg.csv', {type: 'text/csv'}));
+    } else {
+      files.push(new File(['segundo,hr_bpm\n' + w.hr.map((h, i) => i + ',' + (h || '')).join('\n')], name + '_1hz.csv', {type: 'text/csv'}));
     }
-    try {
-      if (navigator.canShare && navigator.canShare({files})) { await navigator.share({files, title: name}); return; }
-    } catch (e) { if (e.name === 'AbortError') return; }
-    for (const f of files) {
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(f); a.download = f.name;
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-      await new Promise(r => setTimeout(r, 400));
-    }
+    await shareFiles(files, name);
+  }
+
+  // ---------- lista do histórico ----------
+  function renderWkList(){
+    const list = [...workouts].sort((a, b) => b.start - a.start);
+    const now = Date.now(), DAYMS = 864e5;
+    const an = list.map(w => ({w, a: analyze(w)}));
+    const last7 = an.filter(o => o.w.start > now - 7 * DAYMS), last28 = an.filter(o => o.w.start > now - 28 * DAYMS);
+    const t7 = last7.reduce((s, o) => s + o.a.trimp, 0), t28 = last28.reduce((s, o) => s + o.a.trimp, 0) / 4;
+    $('l7n').textContent = last7.length;
+    const tt = last7.reduce((s, o) => s + o.a.durS, 0);
+    $('l7t').textContent = tt < 3600 ? Math.round(tt / 60) + ' min' : Math.floor(tt / 3600) + 'h' + String(Math.round(tt % 3600 / 60)).padStart(2, '0');
+    $('l7trimp').textContent = t7.toFixed(0);
+    const span = list.length ? (now - list[list.length - 1].start) / DAYMS : 0;
+    $('loadTxt').textContent = span >= 21 && t28 > 0
+      ? `Média semanal das últimas 4 semanas: ${t28.toFixed(0)}. Relação 7 d ÷ média de 4 sem: ${(t7 / t28).toFixed(2)} (acima de ~1,5 indica aumento brusco de carga).`
+      : 'Com pelo menos 3 semanas de histórico, o app compara a carga desta semana com a média das últimas 4.';
+    $('wkList').innerHTML = an.length ? an.map(({w, a}) => {
+      const d = new Date(w.start);
+      const strip = ZONES.map((z, k) => `<div style="width:${a.n ? a.zoneSec[k] / a.n * 100 : 0}%;background:${z.hex}"></div>`).join('');
+      return `<button class="wkItem" data-id="${w.id}">
+        <div class="t1"><span>${TYPE_LBL[w.type]}${w.fasted ? '<span class="tag">jejum</span>' : ''}</span><span>${fmtDur(a.durS)}</span></div>
+        <div class="t2">${d.toLocaleDateString('pt-BR', {weekday: 'short', day: '2-digit', month: '2-digit'})} ${d.toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'})} · FC média ${a.avg.toFixed(0)} · máx ${a.max} · TRIMP ${a.trimp.toFixed(0)}${a.kcal ? ' · ' + a.kcal.toFixed(0) + ' kcal' : ''}</div>
+        <div class="zstrip">${strip}</div></button>`;
+    }).join('') : '<p class="msg">Nenhum treino salvo ainda. Inicie um na aba Monitor.</p>';
+  }
+
+  // ---------- backup completo ----------
+  async function backupAll(){
+    const stamp = new Date().toISOString().slice(0, 10);
+    await shareFiles([new File([JSON.stringify({app: 'h10', v: 1, rest: hist, workouts})], `h10_backup_${stamp}.json`, {type: 'application/json'})], 'Backup Monitor H10');
+  }
+  function restoreAll(file){
+    const r = new FileReader();
+    r.onload = () => {
+      try {
+        const data = JSON.parse(r.result);
+        const restArr = Array.isArray(data) ? data : (data.rest || []);
+        const wkArr = Array.isArray(data) ? [] : (data.workouts || []);
+        const rk = new Set(hist.map(h => h.d)), wkk = new Set(workouts.map(w => w.id));
+        let nr = 0, nw = 0;
+        for (const h of restArr) if (h && h.d && typeof h.ln === 'number' && !rk.has(h.d)) { hist.push(h); rk.add(h.d); nr++; }
+        for (const w of wkArr) if (w && w.id && Array.isArray(w.hr) && w.cfg && !wkk.has(w.id)) { workouts.push(w); wkk.add(w.id); nw++; }
+        hist.sort((a, b) => a.d < b.d ? -1 : 1);
+        saveHist(); saveWorkouts(); renderHistory(); renderWkList();
+        $('bkMsg').textContent = `Restaurados: ${nw} treinos e ${nr} medições de repouso.`;
+      } catch (e) { $('bkMsg').textContent = 'Arquivo de backup inválido.'; }
+    };
+    r.readAsText(file);
   }
 
   // ---------- tela sempre ligada ----------
   // 1º Screen Wake Lock API; se o navegador recusar, vídeo mudo em loop (técnica alternativa, menos garantida)
   let awakeMode = '', nsVideo = null, nsTimer = null;
-  function wantAwake(){ return !!(device || demoTimer || focusOn || (rest && !rest.done)); }
+  function wantAwake(){ return !!(device || demoTimer || focusOn || wk || hrrCap || (rest && !rest.done)); }
   async function syncAwake(){
     if (wantAwake()) {
       if (wakeLock && !wakeLock.released) { updateAwakeLabel(); return; }
@@ -760,7 +1213,7 @@
     const parts = [];
     if (hr > 0) parts.push(Math.round(hr / fcmax() * 100) + '% FCmáx');
     const r = rmssd(); if (r !== null) parts.push('RMSSD ' + r.toFixed(0));
-    if (recording && rec) parts.push('● ' + $('dur').textContent);
+    if (wk) parts.push('● ' + TYPE_LBL[wk.type] + ' ' + fmtDur((Date.now() - wk.start) / 1000));
     $('fSub').textContent = parts.join('  ·  ') || '--';
     $('fWarn').textContent = !(device || demoTimer) ? 'Sensor desconectado'
       : stale ? 'Sem dados há mais de 5 s' : (lastContact === false ? 'Sem contato com a pele: umedeça os eletrodos' : '');
@@ -998,10 +1451,10 @@
   function renderZones(){
     const el = $('zones');
     const fm = fcmax();
-    const total = rec ? rec.zoneSec.reduce((a, b) => a + b, 0) : 0;
+    const total = wk ? wk.zoneSec.reduce((a, b) => a + b, 0) : 0;
     el.innerHTML = ZONES.map((z, k) => {
       const lo = Math.round(z.lo * fm), hi = k === 4 ? fm : Math.round(z.hi * fm) - 1;
-      const s = rec ? rec.zoneSec[k] : 0;
+      const s = wk ? wk.zoneSec[k] : 0;
       const pct = total ? s / total * 100 : 0;
       const mm = Math.floor(s / 60), ss = Math.floor(s % 60);
       return `<div class="zbar"><span class="lbl">${z.n.split(' ')[0]} ${lo}–${hi}</span>
@@ -1011,13 +1464,12 @@
   }
 
   setInterval(() => {
-    if (!rec) return;
-    const end = recording ? Date.now() : (rec.end || Date.now());
-    const s = Math.floor((end - rec.start) / 1000);
-    const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), ss = s % 60;
-    $('dur').textContent = (h ? h + ':' : '') + String(m).padStart(2,'0') + ':' + String(ss).padStart(2,'0');
-    $('avg').textContent = rec.n ? Math.round(rec.sum / rec.n) : '--';
-    $('max').textContent = rec.max || '--';
+    tickHRR();
+    if (!wk) return;
+    $('wkClock').textContent = fmtDur((Date.now() - wk.start) / 1000);
+    $('avg').textContent = wk.n ? Math.round(wk.sum / wk.n) : '--';
+    $('max').textContent = wk.max || '--';
+    $('wkTrimp').textContent = wk.trimp.toFixed(0);
     renderZones();
   }, 1000);
 
@@ -1080,8 +1532,26 @@
   // ---------- botões ----------
   $('btnConnect').addEventListener('click', () => device ? disconnect() : connect());
   $('btnDemo').addEventListener('click', () => demoTimer ? stopDemo() : startDemo());
-  $('btnRec').addEventListener('click', toggleRec);
-  $('btnExport').addEventListener('click', exportCSV);
+  $('btnStart').addEventListener('click', startWorkout);
+  $('fStart').addEventListener('click', startWorkout);
+  document.querySelectorAll('.holdEnd').forEach(setupHold);
+  document.querySelectorAll('.typeSeg').forEach(g => g.addEventListener('click', e => { const b = e.target.closest('button[data-t]'); if (b) setType(b.dataset.t); }));
+  document.querySelectorAll('.fastedChk').forEach(c => c.addEventListener('change', () => setFasted(c.checked)));
+  $('evalClose').addEventListener('click', closeEval);
+  $('wkList').addEventListener('click', e => { const b = e.target.closest('.wkItem'); if (b) openEval(b.dataset.id); });
+  $('btnBackup').addEventListener('click', backupAll);
+  $('btnRestore').addEventListener('click', () => $('bkFile').click());
+  $('bkFile').addEventListener('change', e => { if (e.target.files[0]) restoreAll(e.target.files[0]); e.target.value = ''; });
+  $('tabs').addEventListener('click', e => {
+    const b = e.target.closest('button[data-tab]'); if (!b) return;
+    [...$('tabs').children].forEach(x => x.classList.toggle('sel', x === b));
+    ['tabMonitor', 'tabHist'].forEach(id => $(id).classList.toggle('hidden', id !== b.dataset.tab));
+    if (b.dataset.tab === 'tabHist') renderWkList(); else { resize(); resizeEcg(); renderHistory(); }
+    window.scrollTo(0, 0);
+  });
+  ['peso', 'idade'].forEach(id => { $(id).value = store.get(id, $(id).value); $(id).addEventListener('change', () => store.set(id, $(id).value)); });
+  checkWip();
+  updateWkUI();
   $('winSeg').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
     windowSec = +b.dataset.w;
@@ -1122,7 +1592,7 @@
   renderHistory();
 
   // ---------- app instalável (PWA) ----------
-  const APP_VERSION = '2026-11-21.1';
+  const APP_VERSION = '2026-11-21.2';
   $('appVer').textContent = APP_VERSION;
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
