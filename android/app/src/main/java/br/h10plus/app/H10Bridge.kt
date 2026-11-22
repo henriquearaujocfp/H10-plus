@@ -88,6 +88,7 @@ class H10Bridge(private val act: MainActivity, private val web: WebView) {
             }
 
             override fun deviceDisconnected(polarDeviceInfo: PolarDeviceInfo) {
+                H10Widget.live(act.applicationContext, 0, true)
                 connected = false
                 main.post { hrJob?.cancel(); ecgJob?.cancel() }
                 emit("status", JSONObject().put("state", "disconnected").put("id", polarDeviceInfo.deviceId))
@@ -209,6 +210,7 @@ class H10Bridge(private val act: MainActivity, private val web: WebView) {
                             .put("rr", JSONArray(s.rrsMs))
                             .put("contact", if (s.contactStatusSupported) s.contactStatus else JSONObject.NULL)
                         emit("hr", o)
+                        H10Widget.live(act.applicationContext, s.hr)
                     }
                 }
             } catch (e: CancellationException) {
@@ -331,6 +333,9 @@ class H10Bridge(private val act: MainActivity, private val web: WebView) {
 
     @JavascriptInterface
     fun hcRead(days: Int) = main.post { health.read(days) }
+
+    @JavascriptInterface
+    fun widgetUpdate(json: String) = main.post { H10Widget.setSummary(act.applicationContext, json) }
 
     @JavascriptInterface
     fun hcWrite(kind: String, json: String) = main.post { health.write(kind, json) }

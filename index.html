@@ -918,7 +918,7 @@
     if (!o.remote && NATIVE && NATIVE.wearCmd) NATIVE.wearCmd('start', JSON.stringify({sid, t: start, tipo: selType}));
     hrrCap = null;
     try { navigator.vibrate && navigator.vibrate(60); } catch (e) {}
-    updateWkUI(); renderZones(); syncAwake(); saveWip();
+    updateWkUI(); renderZones(); syncAwake(); saveWip(); pushWidget();
   }
 
   function onWorkoutSample(t, hr, rr, contact){
@@ -1064,6 +1064,7 @@
   let workouts = [];
   try { workouts = JSON.parse(store.get(WKEY, '[]')) || []; } catch (e) { workouts = []; }
   function saveWorkouts(){
+    pushWidget();
     try { localStorage.setItem(WKEY, JSON.stringify(workouts)); }
     catch (e) { showErr('Não foi possível salvar o histórico (armazenamento cheio?). Faça um backup completo na aba Histórico.'); }
   }
@@ -1856,7 +1857,7 @@
   const pctl = (a, p) => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
   const HC_NAMES = {sleep: 'sono', hr: 'FC', rhr: 'FC de repouso', hrv: 'HRV', spo2: 'SpO₂', resp: 'respiração', skin: 'temperatura da pele'};
 
-  function saveNights(){ try { localStorage.setItem(NKEY, JSON.stringify(nights)); } catch (e) {} }
+  function saveNights(){ pushWidget(); try { localStorage.setItem(NKEY, JSON.stringify(nights)); } catch (e) {} }
 
   function onHc(d){
     if (d.kind === 'status' || d.kind === 'perm') {
@@ -2019,7 +2020,47 @@
   // ---------- relógio (Galaxy Watch) ----------
   const WEAR_APK = 'https://github.com/henriquearaujocfp/H10-plus/releases/download/android-latest/h10plus-wear.apk';
   let wearImported = [];
+  // ---------- widget da tela inicial ----------
+  let widgetTimer = null;
+  function pushWidget(){
+    if (!NATIVE || !NATIVE.widgetUpdate) return;
+    clearTimeout(widgetTimer);
+    widgetTimer = setTimeout(() => {
+      const f1 = v => v.toFixed(2).replace('.', ',');
+      const o = {zb: curZB()};
+      try {
+        const r = readinessNow();
+        if (r.status === 'sem') o.ready = 'Prontidão: sem medição de repouso hoje';
+        else if (r.status === 'base') o.ready = `Prontidão: base em construção (${r.n}/7) · lnRMSSD ${f1(r.ln)}`;
+        else {
+          o.ready = `Prontidão: ${{normal: 'dentro do normal', alta: 'acima do normal', baixa: 'abaixo do normal'}[r.status]} · lnRMSSD ${f1(r.ln)} (base ${f1(r.mean)})`;
+          o.readyLvl = r.status === 'baixa' ? 'bad' : 'good';
+        }
+      } catch (e) {}
+      try {
+        const today = dkey(Date.now());
+        if (nights[today]) {
+          const fl = nightFlags(today), n = nights[today];
+          const sono = n.sleep ? `${Math.floor(n.sleep / 60)}h${String(Math.round(n.sleep % 60)).padStart(2, '0')}` : '';
+          o.night = `Noite${sono ? ' (' + sono + ')' : ''}: ` + (fl.length ? fl.map(x => x.replace(/ \(.*\)$/, '')).join('; ') : 'marcadores dentro do normal');
+          if (fl.length) o.nightLvl = 'bad';
+        }
+      } catch (e) {}
+      try {
+        const w = [...workouts].sort((a, b) => b.start - a.start)[0];
+        if (w) {
+          const d = new Date(w.start), hoje = dkey(Date.now()) === dkey(w.start), ontem = dkey(Date.now() - DAY) === dkey(w.start);
+          const quando = hoje ? 'hoje' : ontem ? 'ontem' : d.toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'});
+          const a = analyze(w);
+          o.last = `Último: ${TYPE_LBL[w.type] || 'Treino'} · ${quando} · ${Math.round((w.end - w.start) / 60000)} min · TRIMP ${Math.round(a.trimp)}` + (w.gps && w.gps.dist ? ` · ${(w.gps.dist / 1000).toFixed(1).replace('.', ',')} km` : '');
+        }
+      } catch (e) {}
+      if (wk) o.wk = {type: TYPE_LBL[wk.type], start: wk.start};
+      try { NATIVE.widgetUpdate(JSON.stringify(o)); } catch (e) {}
+    }, 300);
+  }
   function pushWearConfig(){
+    pushWidget();
     if (!NATIVE || !NATIVE.wearConfig) return;
     try { NATIVE.wearConfig(JSON.stringify({zb: curZB(), fcmax: fcmax()})); } catch (e) {}
   }
@@ -2095,7 +2136,13 @@
       const t = +c.t || 0;
       if (t && Date.now() - t > 120000) return;   // comando antigo
       if (c.origem === 'hevy') { setType('forca'); startWorkout(); }
+      else if (c.origem === 'widget') { setType(c.tipo === 'forca' ? 'forca' : 'cardio'); startWorkout(); }
       else startWorkout({remote: true, sid: c.sid, t, tipo: c.tipo});
+    } else if (c.acao === 'repouso' && !wk && !rest) {
+      // aguarda a cinta conectar (até 30 s) antes de abrir a medição
+      let n = 0;
+      const tryRest = () => { if (device || n++ >= 30) startRest(); else setTimeout(tryRest, 1000); };
+      tryRest();
     } else if (c.acao === 'stop' && wk && (!c.sid || c.sid === wk.sid)) {
       if (c.origem === 'hevy') { if (wk.type === 'forca') endWorkout(); }
       else endWorkout({remote: true});
@@ -2525,7 +2572,7 @@
   const HKEY = 'h10_rest_history_v1';
   let hist = [];
   try { hist = JSON.parse(store.get(HKEY, '[]')) || []; } catch (e) { hist = []; }
-  function saveHist(){ store.set(HKEY, JSON.stringify(hist)); }
+  function saveHist(){ pushWidget(); store.set(HKEY, JSON.stringify(hist)); }
   const DAY = 864e5;
 
   function seriesFor(pos){
@@ -2829,7 +2876,7 @@
   renderHistory();
 
   // ---------- app instalável (PWA) ----------
-  const APP_VERSION = '2026-11-21.10';
+  const APP_VERSION = '2026-11-22.1';
   $('appVer').textContent = APP_VERSION + (NATIVE ? ' · app Android ' + NATIVE.version() : '');
   nativeInit();
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
