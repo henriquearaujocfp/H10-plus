@@ -2042,7 +2042,11 @@
       case 'live':
         wearLive = {...d, at: Date.now()};
         // sem cinta no celular: usa a FC enviada pelo relógio
-        if (wk && d.hr > 0 && Date.now() - lastOwnHrT > 4000) onReading({hr: d.hr, contact: null, rr: [], relay: true});
+        if (d.hr > 0 && Date.now() - lastOwnHrT > 4000) {
+          if (!device) setStatus('FC via relógio', 'on');
+          if (wk) onReading({hr: d.hr, contact: null, rr: [], relay: true});
+          else { lastReadingT = Date.now(); lastHR = d.hr; $('bpm').textContent = d.hr; if (focusOn) renderFocus(); }
+        }
         break;
       case 'synced':
         if (wearImported.length) {
@@ -2057,8 +2061,19 @@
   // ---------- app Android (ponte nativa) ----------
   const NATIVE_APK = 'https://github.com/henriquearaujocfp/H10-plus/releases/download/android-latest/h10plus.apk';
   let memEntries = [], memData = null;
+  function markNativeConnected(id){
+    device = {native: true, id: id || (device && device.id) || ''};
+    manualDisconnect = false;
+    setStatus('Conectado', 'on');
+    $('btnConnect').textContent = 'Desconectar';
+    $('btnEcg').disabled = false;
+    $('envMsg').classList.add('hidden');
+    syncAwake(); memUI();
+  }
   function nativeInit(){
     if (!NATIVE) return;
+    // a cinta pode já estar conectada pelo app (ex.: a página recarregou durante o treino)
+    setTimeout(() => { try { if (NATIVE.isConnected && NATIVE.isConnected() && !device) markNativeConnected(); } catch (e) {} }, 0);
     $('envMsg').classList.add('hidden');
     $('memCard').classList.remove('hidden');
     $('nightCard').classList.remove('hidden');
@@ -2079,13 +2094,7 @@
       switch (type) {
         case 'status':
           if (d.state === 'connected') {
-            device = {native: true, id: d.id};
-            manualDisconnect = false;
-            setStatus('Conectado', 'on');
-            $('btnConnect').textContent = 'Desconectar';
-            $('btnEcg').disabled = false;
-            $('envMsg').classList.add('hidden');
-            syncAwake(); memUI();
+            markNativeConnected(d.id);
           } else if (d.state === 'disconnected') {
             const was = !!device;
             device = null; setEcgOn(false); $('btnEcg').disabled = true;
@@ -2095,7 +2104,11 @@
           } else if (d.state === 'scanning') setStatus('Procurando H10…');
           else if (d.state === 'connecting') setStatus('Conectando…');
           break;
-        case 'hr': lastOwnHrT = Date.now(); onReading({hr: d.hr, contact: d.contact, rr: d.rr || []}); break;
+        case 'hr':
+          lastOwnHrT = Date.now();
+          if (!device) markNativeConnected();
+          onReading({hr: d.hr, contact: d.contact, rr: d.rr || []});
+          break;
         case 'ecg': pushEcg(d.v, BigInt(d.ts || '0')); if (!ecgOn) setEcgOn(true); break;
         case 'ecgState':
           setEcgOn(!!d.on);
@@ -2314,7 +2327,8 @@
     if (wk) parts.push('● ' + TYPE_LBL[wk.type] + ' ' + fmtDur((Date.now() - wk.start) / 1000));
     if (wk && window.__wearTxt && window.__wearTxt.includes('km')) parts.push(window.__wearTxt.replace('Relógio: ', ''));
     $('fSub').textContent = parts.join('  ·  ') || '--';
-    $('fWarn').textContent = !(device || demoTimer) ? 'Sensor desconectado'
+    const relay = typeof wearLive !== 'undefined' && wearLive && Date.now() - wearLive.at < 6000 && wearLive.hr > 0;
+    $('fWarn').textContent = !(device || demoTimer) ? (relay ? '' : 'Sensor desconectado')
       : stale ? 'Sem dados há mais de 5 s' : (lastContact === false ? 'Sem contato com a pele: umedeça os eletrodos' : '');
     $('fConn').textContent = $('statusTxt').textContent;
   }
@@ -2739,7 +2753,7 @@
   renderHistory();
 
   // ---------- app instalável (PWA) ----------
-  const APP_VERSION = '2026-11-21.7';
+  const APP_VERSION = '2026-11-21.8';
   $('appVer').textContent = APP_VERSION + (NATIVE ? ' · app Android ' + NATIVE.version() : '');
   nativeInit();
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
