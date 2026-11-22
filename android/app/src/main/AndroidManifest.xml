@@ -35,6 +35,9 @@
 
     <queries>
         <package android:name="com.google.android.apps.healthdata" />
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
     </queries>
 
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />

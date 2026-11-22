@@ -93,8 +93,18 @@ class WorkoutService : Service() {
     private val msgListener = MessageClient.OnMessageReceivedListener { ev ->
         if (ev.path == "/live") try {
             val o = JSONObject(String(ev.data))
-            WorkoutState.remoteHr = o.optInt("hr", 0)
-            WorkoutState.remoteHrMs = System.currentTimeMillis()
+            val now = System.currentTimeMillis()
+            val h = o.optInt("hr", 0)
+            if (h > 0) { WorkoutState.remoteHr = h; WorkoutState.remoteHrMs = now }
+            o.optJSONObject("test")?.let { t ->
+                WorkoutState.testPhase = t.optString("ph")
+                WorkoutState.testLoad = t.optString("load")
+                WorkoutState.testNext = t.optString("next")
+                WorkoutState.testIdx = t.optInt("idx", 0)
+                WorkoutState.testEndMs = now + (t.optDouble("left", 0.0) * 1000).toLong()
+                WorkoutState.testHold = t.optBoolean("vt2") && !t.optBoolean("max")
+                WorkoutState.testAt = now
+            }
         } catch (_: Exception) { }
     }
 

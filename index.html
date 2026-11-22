@@ -120,6 +120,10 @@
   .tphase{display:flex;justify-content:space-between;align-items:baseline;font-size:16px;color:var(--mut)}
   #tClock{font-size:30px;font-weight:700;color:var(--txt);font-variant-numeric:tabular-nums}
   #tLoad{font-size:40px;font-weight:800;text-align:center;margin:10px 0 2px}
+  #tDo{text-align:center;font-size:15px;color:var(--mut);margin:0 0 6px}
+  #tBar{height:8px;background:#21262d;border-radius:4px;overflow:hidden;margin:6px 0}
+  #tBar div{height:100%;background:#58a6ff;width:0}
+  #tNext.alert{background:#f2c230;color:#0d1117;font-size:22px;font-weight:800;border-radius:10px;padding:10px 6px;margin-top:6px}
   .a1hi{color:#5fd68f} .a1mid{color:#f2c230} .a1lo{color:#ff7b72}
   #testTrend{height:150px}
 </style>
@@ -380,6 +384,7 @@
       </div>
       <label class="chk"><input type="checkbox" id="tMax"> Ir até a exaustão para medir a FCmáx real (a cada 6–8 semanas basta)</label>
       <label class="chk"><input type="checkbox" id="tCaf"> Tomei cafeína antes do teste</label>
+      <label class="chk"><input type="checkbox" id="tVoice" checked> Avisos por voz (5 s antes de cada troca de etapa)</label>
       <p id="tWeightMsg" class="msg"></p>
     </section>
     <section class="card">
@@ -398,6 +403,8 @@
   <div id="testRun" class="tbody hidden">
     <div class="tphase"><span id="tPhase">Aquecimento</span><span id="tClock">0:00</span></div>
     <div id="tLoad">--</div>
+    <div id="tDo"></div>
+    <div id="tBar"><div></div></div>
     <div id="tNext" class="msg" style="text-align:center"></div>
     <div class="grid" style="margin:12px 0">
       <div class="stat"><b id="tHR">--</b><span>FC</span></div>
@@ -969,7 +976,7 @@
       notes.push(`TRIMP ${Math.round(a.trimp)}` + (a.fatPct != null ? ` · gordura ~${Math.round(a.fatPct)}% / carboidrato ~${Math.round(a.choPct)}%` : ''));
     }
     if (w.hrr && w.hrr.drop) notes.push(`Recuperação 1 min: −${w.hrr.drop} bpm`);
-    if (dist) notes.push(`Distância ${(dist / 1000).toFixed(2)} km` + (w.gps.pace ? ` · pace ${fmtPace(w.gps.pace)}` : ''));
+    if (dist) notes.push(`Distância ${(dist / 1000).toFixed(2)} km` + (w.gps.pace ? ` · velocidade média ${fmtSpd(w.gps.pace)}` : ''));
     if (w.fasted) notes.push('Em jejum');
     notes.push('Gravado pelo Monitor H10 (Polar H10)');
     const o = {id: w.sid || w.id, start: w.start, end: w.end, exType, title: `${lbl} · Monitor H10`, notes: notes.join('\n'),
@@ -1198,9 +1205,9 @@
       ${w.source === 'celular+relogio' ? '<p class="msg">Gravado no celular e no Galaxy Watch ao mesmo tempo (percurso e recuperação vindos do relógio).</p>' : ''}
       ${w.gps ? `<section class="card"><h2>Percurso (GPS do relógio)</h2>
         <div class="grid"><div class="stat"><b>${(w.gps.dist / 1000).toFixed(2).replace('.', ',')}</b><span>km</span></div>
-        <div class="stat"><b>${fmtPace(w.gps.pace)}</b><span>Ritmo médio</span></div>
+        <div class="stat"><b>${fmtSpd(w.gps.pace)}</b><span>Velocidade média</span></div>
         <div class="stat"><b>${w.gps.dist && w.gps.dur ? (w.gps.dist / w.gps.dur * 3.6).toFixed(1).replace('.', ',') : '--'}</b><span>km/h médio</span></div></div>
-        ${w.gps.splits && w.gps.splits.length ? `<table style="margin-top:8px"><tr><th>Km</th><th>Parcial</th></tr>${w.gps.splits.map((t, i) => `<tr><td>${i + 1}</td><td>${fmtPace(t)}</td></tr>`).join('')}</table>` : ''}
+        ${w.gps.splits && w.gps.splits.length ? `<table style="margin-top:8px"><tr><th>Km</th><th>Tempo</th><th>Velocidade</th></tr>${w.gps.splits.map((t, i) => `<tr><td>${i + 1}</td><td>${fmtDur(t)}</td><td>${fmtSpd(t)}</td></tr>`).join('')}</table>` : ''}
         <p class="msg">Distância recalculada só com pontos de precisão até 25 m; ritmo médio pelo tempo total, incluindo paradas.</p></section>` : ''}
       <section class="card">
         <h2>Dados medidos</h2>
@@ -1493,6 +1500,7 @@
     T_INPUTS.forEach(id => { $(id).value = store.get(id, $(id).value); });
     $('tMax').checked = false;
     $('tCaf').checked = store.get('tCaf', '0') === '1';
+    $('tVoice').checked = store.get('tVoice', '1') === '1';
     setTMode(tMode);
     $('tReady').innerHTML = readyHtml(readinessNow()) + nightReadyHtml();
     $('testSetup').classList.remove('hidden'); $('testRun').classList.add('hidden');
@@ -1522,15 +1530,17 @@
     if (!(device || demoTimer)) { $('tReady').insertAdjacentHTML('afterbegin', '<p class="status-line bad">Conecte o H10 antes de iniciar.</p>'); return; }
     T_INPUTS.forEach(id => store.set(id, $(id).value));
     store.set('tCaf', $('tCaf').checked ? '1' : '0');
+    store.set('tVoice', $('tVoice').checked ? '1' : '0');
     const p = tMode === 'esteira' ? {spd: +$('tSpd').value || 6, inc: +$('tSpdInc').value || 1, grade: +$('tGrade').value || 0}
             : tMode === 'bike' ? {w: +$('tW').value || 75, inc: +$('tWInc').value || 25} : {};
     beep(1);
     if (!wk) { setType('cardio'); startWorkout(); }
     test = {id: 't' + Date.now(), start: Date.now(), mode: tMode, p, stageSec: +$('tStage').value, warm: +$('tWarm').value,
-            maximal: $('tMax').checked, caf: $('tCaf').checked, rr: [], hr: [], points: [], stages: [], curIdx: 0, vt2Live: false, lastPt: 0,
+            maximal: $('tMax').checked, caf: $('tCaf').checked, voice: $('tVoice').checked, said: {}, rr: [], hr: [], points: [], stages: [], curIdx: 0, vt2Live: false, lastPt: 0,
             ready: readinessNow(), cfg: cfgSnap()};
     syncAwake();
     showTestRun();
+    say(`Teste iniciado. Aquecimento de ${Math.round(test.warm / 60)} minutos: ${loadSpeech(test, 0)}.`);
   }
 
   function closeStage(idx, endT){
@@ -1544,11 +1554,42 @@
                    a1: lastPt ? lastPt.a1 : null, dur: Math.round((endT - st) / 1000)});
   }
 
+  // ---------- voz ----------
+  function speak(txt){
+    try {
+      if (NATIVE && NATIVE.speak) { NATIVE.speak(txt); return; }
+      if (window.speechSynthesis) {
+        speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(txt); u.lang = 'pt-BR'; u.rate = 1.05;
+        speechSynthesis.speak(u);
+      }
+    } catch (e) {}
+  }
+  function say(txt){ if (test && test.voice) speak(txt); }
+  const numSpeech = v => String(Math.round(v * 10) / 10).replace('.', ',');
+  function loadSpeech(t, idx){
+    const l = loadAt(t, idx);
+    if (t.mode === 'esteira') return `velocidade ${numSpeech(l)} quilômetros por hora, inclinação ${numSpeech(t.p.grade || 0)} por cento`;
+    if (t.mode === 'bike') return `potência ${Math.round(l)} watts`;
+    return idx === 0 ? 'esforço leve, conversa fácil' : 'aumente o esforço um nível';
+  }
+  function doText(t, idx){
+    if (idx === 0) return t.mode === 'livre' ? 'Aquecimento: esforço leve, conversa fácil.' : 'Aquecimento: ritmo leve, respirando pelo nariz se conseguir.';
+    if (t.mode === 'livre') return `Nível ${idx}: um degrau acima da etapa anterior e mantenha constante.`;
+    return 'Mantenha a carga constante até a próxima troca. Não segure no apoio da esteira.';
+  }
+
   function tickTest(){
     if (!test) return;
     const t = test, now = Date.now(), e = (now - t.start) / 1000;
     const ph = phaseAt(t, e);
     if (ph.idx !== t.curIdx) { closeStage(t.curIdx, now); t.curIdx = ph.idx; beep(2); }
+    // aviso por voz 5 s antes da troca
+    const nx = ph.idx + 1;
+    if (ph.left <= 5.5 && !t.said['n' + nx]) {
+      t.said['n' + nx] = 1;
+      if (!(t.vt2Live && !t.maximal)) say(`Em 5 segundos, etapa ${nx}: ${loadSpeech(t, nx)}.`);
+    }
     // ponto de DFA a cada 5 s com janela de 2 min
     if (e >= 120 && now - t.lastPt >= 5000) {
       t.lastPt = now;
@@ -1559,14 +1600,26 @@
         if (a1 !== null && hs.length) t.points.push({s: Math.round(e), hr: +(hs.reduce((a, b) => a + b, 0) / hs.length).toFixed(1), a1: +a1.toFixed(3), art: +cl.artPct.toFixed(1)});
       }
       const last = t.points.slice(-6);
-      if (!t.vt2Live && last.length === 6 && last.every(p => p.a1 < 0.5 && p.art <= 5)) { t.vt2Live = true; beep(3); }
+      if (!t.said.vt1 && last.length === 6 && last.every(p => p.a1 < 0.75 && p.art <= 5)) { t.said.vt1 = 1; say('Primeiro limiar ultrapassado. Continue as etapas.'); }
+      if (!t.vt2Live && last.length === 6 && last.every(p => p.a1 < 0.5 && p.art <= 5)) {
+        t.vt2Live = true; beep(3);
+        say(t.maximal ? 'Segundo limiar atingido. Continue as etapas até a exaustão e depois toque em concluir.' : 'Segundo limiar atingido. Pode concluir o teste e reduzir a velocidade.');
+      }
       drawScatter($('tScatter'), t.points, null);
     }
     // interface
     $('tClock').textContent = fmtDur(e);
     $('tPhase').textContent = ph.idx === 0 ? 'Aquecimento' : `Etapa ${ph.idx}`;
     $('tLoad').textContent = fmtLoad(t.mode, loadAt(t, ph.idx), t.p);
-    $('tNext').textContent = `Próxima: ${fmtLoad(t.mode, loadAt(t, ph.idx + 1), t.p)} em ${fmtDur(ph.left)}`;
+    const stLen = ph.idx === 0 ? t.warm : t.stageSec;
+    $('tBar').firstElementChild.style.width = Math.min(100, (1 - ph.left / stLen) * 100) + '%';
+    $('tDo').textContent = doText(t, ph.idx);
+    const nextL = fmtLoad(t.mode, loadAt(t, ph.idx + 1), t.p);
+    const soon = ph.left <= 5.5 && !(t.vt2Live && !t.maximal);
+    $('tNext').classList.toggle('alert', soon);
+    $('tNext').textContent = soon ? `AJUSTE → ${nextL} em ${Math.ceil(ph.left)}` : `Próxima: ${nextL} em ${fmtDur(ph.left)}`;
+    t.guide = {ph: ph.idx === 0 ? 'Aquecimento' : `Etapa ${ph.idx}`, load: fmtLoad(t.mode, loadAt(t, ph.idx), t.p), next: nextL,
+               left: Math.round(ph.left * 10) / 10, idx: ph.idx, vt2: t.vt2Live, max: t.maximal};
     $('tHR').textContent = Date.now() - lastReadingT < 5000 && lastHR ? lastHR : '--';
     const lp = t.points[t.points.length - 1];
     const a1el = $('tA1');
@@ -2139,6 +2192,7 @@
     return {dist: Math.round(dist), dur: Math.round(lastT), pace: lastT && dist ? Math.round(lastT / dist * 1000) : null, splits};
   }
   const fmtPace = s => s ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}/km` : '--';
+  const fmtSpd = s => s ? `${(3600 / s).toFixed(1).replace('.', ',')} km/h` : '--';
   // GPS do relógio [s, lat, lon, alt, acc, spd] -> instantes absolutos
   const gpsAbsOf = o => (o.gps || []).map(p => [Math.round(o.start + p[0] * 1000), p[1], p[2], p[3], p[4], p[5]]);
   function importWear(js, path){
@@ -2751,9 +2805,13 @@
   setInterval(() => {
     tickHRR();
     tickTest();
-    if (wk && NATIVE && NATIVE.wearLive && device && Date.now() - lastReadingT < 5000 && (++liveTick % 2 === 0)) NATIVE.wearLive(JSON.stringify({hr: lastHR, sid: wk.sid}));
+    if (wk && NATIVE && NATIVE.wearLive) {
+      const ownHr = device && Date.now() - lastReadingT < 5000 ? lastHR : 0;
+      if (test && test.guide) NATIVE.wearLive(JSON.stringify({hr: ownHr, sid: wk.sid, test: test.guide}));
+      else if (ownHr && (++liveTick % 2 === 0)) NATIVE.wearLive(JSON.stringify({hr: ownHr, sid: wk.sid}));
+    }
     const wl = typeof wearLive !== 'undefined' && wearLive && Date.now() - wearLive.at < 8000 ? wearLive : null;
-    const wtxt = wl && wl.gps ? (wl.fix || wl.dist > 0 ? `Relógio: ${(wl.dist / 1000).toFixed(2).replace('.', ',')} km${wl.pace > 0 && wl.pace < 1800 ? ' · ' + fmtPace(wl.pace) : ''}` : 'Relógio: aguardando GPS…') : (wl ? 'Relógio vinculado' : '');
+    const wtxt = wl && wl.gps ? (wl.fix || wl.dist > 0 ? `Relógio: ${(wl.dist / 1000).toFixed(2).replace('.', ',')} km${wl.pace > 0 && wl.pace < 1800 ? ' · ' + fmtSpd(wl.pace) : ''}` : 'Relógio: aguardando GPS…') : (wl ? 'Relógio vinculado' : '');
     if ($('wkWatch')) $('wkWatch').textContent = wk ? wtxt : '';
     window.__wearTxt = wk ? wtxt : '';
     if (!wk) return;
@@ -2918,7 +2976,7 @@
   renderHistory();
 
   // ---------- app instalável (PWA) ----------
-  const APP_VERSION = '2026-11-22.3';
+  const APP_VERSION = '2026-11-22.4';
   $('appVer').textContent = APP_VERSION + (NATIVE ? ' · app Android ' + NATIVE.version() : '');
   nativeInit();
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

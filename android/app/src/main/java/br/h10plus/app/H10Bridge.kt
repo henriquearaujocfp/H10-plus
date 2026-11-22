@@ -453,7 +453,53 @@ class H10Bridge(private val act: MainActivity, private val web: WebView) {
         }
     }
 
+    // ---------------- voz (teste guiado) ----------------
+    private var tts: android.speech.tts.TextToSpeech? = null
+    private var ttsReady = false
+    private var pendingSpeech: String? = null
+    private val audio by lazy { act.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager }
+    private val speechAttrs = android.media.AudioAttributes.Builder()
+        .setUsage(android.media.AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH).build()
+    private val focusReq by lazy {
+        android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+            .setAudioAttributes(speechAttrs).build()
+    }
+
+    private fun initTts() {
+        tts = android.speech.tts.TextToSpeech(act.applicationContext) { st ->
+            main.post {
+                if (st != android.speech.tts.TextToSpeech.SUCCESS) return@post
+                val t = tts ?: return@post
+                t.language = java.util.Locale("pt", "BR")
+                t.setAudioAttributes(speechAttrs)
+                t.setSpeechRate(1.05f)
+                t.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
+                    override fun onStart(id: String?) {}
+                    override fun onDone(id: String?) { try { audio.abandonAudioFocusRequest(focusReq) } catch (_: Exception) { } }
+                    @Deprecated("") override fun onError(id: String?) { try { audio.abandonAudioFocusRequest(focusReq) } catch (_: Exception) { } }
+                })
+                ttsReady = true
+                pendingSpeech?.let { pendingSpeech = null; say(it) }
+            }
+        }
+    }
+
+    private fun say(text: String) {
+        val t = tts ?: return
+        try { audio.requestAudioFocus(focusReq) } catch (_: Exception) { }
+        t.speak(text, android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, "h10-" + System.currentTimeMillis())
+    }
+
+    /** Fala o texto em português (abaixa a música enquanto fala). */
+    @JavascriptInterface
+    fun speak(text: String) = main.post {
+        if (tts == null) initTts()
+        if (ttsReady) say(text) else pendingSpeech = text
+    }
+
     fun shutdown() {
+        try { tts?.shutdown() } catch (_: Exception) { }
         try { Wearable.getMessageClient(act).removeListener(msgListener) } catch (_: Exception) { }
         health.shutdown()
         scope.cancel()

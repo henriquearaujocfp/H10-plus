@@ -125,13 +125,13 @@ class WearActivity : ComponentActivity() {
         ring = ZoneRingView(this)
         runView.addView(ring, FrameLayout.LayoutParams(-1, -1))
         val runCol = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER }
-        tvTop = label(13f)
+        tvTop = label(14f, bold = true)
         tvZone = label(17f, bold = true)
         tvHr = label(10f, bold = true).apply {
-            setTextSize(TypedValue.COMPLEX_UNIT_PX, sw * 0.40f)
+            setTextSize(TypedValue.COMPLEX_UNIT_PX, sw * 0.37f)
             letterSpacing = -0.03f
         }
-        tvBottom = label(14f)
+        tvBottom = label(16f, bold = true).apply { setPadding(dp(8), dp(2), dp(8), dp(3)) }
         tvHint = label(10f)
         btnSkip = pill("Pular", 0x66000000, size = 12f)
         btnSkip.setOnClickListener { service(WorkoutService.ACTION_SKIP_RECOVERY) }
@@ -152,7 +152,7 @@ class WearActivity : ComponentActivity() {
         runCol.addView(tvTop)
         runCol.addView(tvZone, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(2) })
         runCol.addView(tvHr, LinearLayout.LayoutParams(-2, -2).apply { topMargin = -dp(4) })
-        runCol.addView(tvBottom, LinearLayout.LayoutParams(-2, -2).apply { topMargin = -dp(2) })
+        runCol.addView(tvBottom, LinearLayout.LayoutParams(-2, -2).apply { topMargin = -dp(9) })
         runCol.addView(tvHint, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(6) })
         runCol.addView(btnSkip, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(6) })
         runCol.addView(btnHoldTouch, LinearLayout.LayoutParams(holdSize, holdSize).apply { topMargin = dp(6); gravity = Gravity.CENTER_HORIZONTAL })
@@ -377,6 +377,9 @@ class WearActivity : ComponentActivity() {
         return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
     }
 
+    private var shownTestIdx = -1
+    private var alertedIdx = -1
+
     private fun render() {
         val st = WorkoutState
         val now = System.currentTimeMillis()
@@ -429,9 +432,28 @@ class WearActivity : ComponentActivity() {
                 tvTop.text = fmt((now - st.startMs) / 1000) + bat
                 tvBottom.text = if (st.useGps) {
                     val km = "%.2f km".format(st.distanceM / 1000).replace('.', ',')
-                    val pace = if (st.paceSecKm > 0 && st.paceSecKm < 1800) "  %d:%02d/km".format((st.paceSecKm / 60).toInt(), (st.paceSecKm % 60).toInt()) else ""
-                    if (st.gpsFix || st.distanceM > 0) km + pace else "Aguardando GPS…"
+                    val spd = if (st.paceSecKm > 0 && st.paceSecKm < 1800) "  " + "%.1f km/h".format(3600.0 / st.paceSecKm).replace('.', ',') else ""
+                    if (st.gpsFix || st.distanceM > 0) km + spd else "Aguardando GPS…"
                 } else "Musculação"
+                tvBottom.background = null
+                // teste guiado: etapa, carga atual e aviso 5 s antes da troca
+                if (st.testActive(now)) {
+                    if (st.testIdx != shownTestIdx) {
+                        if (shownTestIdx >= 0) vibrate(450)
+                        shownTestIdx = st.testIdx
+                    }
+                    val left = kotlin.math.max(0L, st.testEndMs - now)
+                    val leftS = ((left + 999) / 1000).toInt()
+                    tvTop.text = "${st.testPhase} · ${fmt(leftS.toLong())}"
+                    if (leftS in 1..5 && !st.testHold) {
+                        if (alertedIdx != st.testIdx) { alertedIdx = st.testIdx; vibrate(150) }
+                        tvBottom.text = "→ ${st.testNext}  $leftS"
+                        tvBottom.background = GradientDrawable().apply { cornerRadius = dp(12).toFloat(); setColor(0xF0000000.toInt()) }
+                        tvBottom.setTextColor(0xFFF2C230.toInt())
+                    } else {
+                        tvBottom.text = st.testLoad
+                    }
+                } else { shownTestIdx = -1; alertedIdx = -1 }
                 val panel = SystemClock.uptimeMillis() < touchFallbackUntil || ring.holdProgress > 0f
                 tvHint.visibility = View.GONE
                 if (SystemClock.uptimeMillis() < lockToastUntil && !panel) tvBottom.text = "🔒 Voltar para encerrar"

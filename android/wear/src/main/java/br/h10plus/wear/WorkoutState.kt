@@ -29,6 +29,16 @@ object WorkoutState {
     @Volatile var remoteHr = 0
     @Volatile var remoteHrMs = 0L
 
+    // teste guiado conduzido pelo celular
+    @Volatile var testAt = 0L          // quando chegou a última orientação
+    @Volatile var testIdx = -1
+    @Volatile var testPhase = ""
+    @Volatile var testLoad = ""
+    @Volatile var testNext = ""
+    @Volatile var testEndMs = 0L       // fim da etapa atual (relógio do relógio)
+    @Volatile var testHold = false     // VT2 atingido em teste submáximo: não anuncia próxima etapa
+    fun testActive(now: Long) = testAt > 0 && now - testAt < 6000
+
     /** FC a mostrar: a da cinta conectada ao relógio; se estiver sem dados, a enviada pelo celular. */
     fun displayHr(now: Long): Int = when {
         now - lastHrMs < 5000 && hr > 0 -> hr
