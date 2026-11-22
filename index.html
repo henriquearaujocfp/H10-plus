@@ -1377,7 +1377,7 @@
   const TKEY = 'h10_tests_v1';
   let tests = [];
   try { tests = JSON.parse(store.get(TKEY, '[]')) || []; } catch (e) { tests = []; }
-  function saveTests(){
+  function saveTests(){ pushWidget();
     try { localStorage.setItem(TKEY, JSON.stringify(tests)); }
     catch (e) { showErr('Não foi possível salvar o teste (armazenamento cheio?). Faça um backup completo.'); }
   }
@@ -2056,6 +2056,27 @@
         }
       } catch (e) {}
       if (wk) o.wk = {type: TYPE_LBL[wk.type], start: wk.start};
+      // cardio por dia (últimos 42 dias): minutos em Z1..Z5 e TRIMP
+      try {
+        const days = {}, from = Date.now() - 42 * DAY;
+        for (const w of workouts) {
+          if (w.type !== 'cardio' || w.end < from || !w.hr) continue;
+          const a = analyze(w), k = dkey(w.start);
+          const d = days[k] = days[k] || [0, 0, 0, 0, 0, 0];
+          a.zoneSec.forEach((z, i) => d[i] += z / 60);
+          d[5] += a.trimp;
+        }
+        for (const k in days) days[k] = days[k].map(v => Math.round(v * 10) / 10);
+        o.cardio = days;
+      } catch (e) {}
+      // VO2máx: testes guiados e estimativa diária pela razão de FC (repouso deitado), últimos 60 dias
+      try {
+        const from = Date.now() - 60 * DAY;
+        o.vo2t = tests.filter(t => t.end >= from && t.res && (t.res.vo2sub || t.res.vo2uth))
+          .map(t => [t.end, t.res.vo2sub ? t.res.vo2sub.v : t.res.vo2uth]).sort((a, b) => a[0] - b[0]);
+        const hm = hrMaxRef().v;
+        o.vo2u = seriesFor('deitado').filter(p => p.t >= from && p.hr > 30).map(p => [p.t, Math.round(15.3 * hm / p.hr * 10) / 10]);
+      } catch (e) {}
       try { NATIVE.widgetUpdate(JSON.stringify(o)); } catch (e) {}
     }, 300);
   }
@@ -2876,7 +2897,7 @@
   renderHistory();
 
   // ---------- app instalável (PWA) ----------
-  const APP_VERSION = '2026-11-22.1';
+  const APP_VERSION = '2026-11-22.2';
   $('appVer').textContent = APP_VERSION + (NATIVE ? ' · app Android ' + NATIVE.version() : '');
   nativeInit();
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

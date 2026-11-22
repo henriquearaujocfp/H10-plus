@@ -27,7 +27,7 @@ class H10Widget : AppWidgetProvider() {
         private const val GREY = 0xFF8A8F98.toInt()
         private var lastLive = 0L
 
-        private fun prefs(ctx: Context) = ctx.getSharedPreferences("h10widget", Context.MODE_PRIVATE)
+        fun prefs(ctx: Context) = ctx.getSharedPreferences("h10widget", Context.MODE_PRIVATE)
 
         private fun ids(ctx: Context): IntArray =
             AppWidgetManager.getInstance(ctx).getAppWidgetIds(ComponentName(ctx, H10Widget::class.java))
@@ -36,6 +36,8 @@ class H10Widget : AppWidgetProvider() {
         fun setSummary(ctx: Context, json: String) {
             prefs(ctx).edit().putString("sum", json).apply()
             refresh(ctx)
+            WeekWidget.refresh(ctx)
+            Vo2Widget.refresh(ctx)
         }
 
         /** FC ao vivo da cinta (0 = sem sinal). Atualiza no máximo a cada 2 s. */

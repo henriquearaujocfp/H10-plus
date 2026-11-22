@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="widget_desc">FC ao vivo, prontidão, noite e atalhos de treino</string>
+    <string name="widget_week_desc">Minutos de cardio por zona em cada dia da semana</string>
+    <string name="widget_vo2_desc">Evolução do VO2máx nos últimos 30 dias</string>
 </resources>
