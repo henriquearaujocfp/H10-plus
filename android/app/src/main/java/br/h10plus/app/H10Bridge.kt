@@ -332,6 +332,24 @@ class H10Bridge(private val act: MainActivity, private val web: WebView) {
     @JavascriptInterface
     fun hcRead(days: Int) = main.post { health.read(days) }
 
+    @JavascriptInterface
+    fun hcWrite(kind: String, json: String) = main.post { health.write(kind, json) }
+
+    // ---------------- Hevy: iniciar/encerrar musculação pela notificação de treino do Hevy ----------------
+    @JavascriptInterface
+    fun hevyStatus(): String = JSONObject()
+        .put("access", HevyListener.hasAccess(act))
+        .put("auto", act.getSharedPreferences("h10", Context.MODE_PRIVATE).getBoolean("hevyAuto", false))
+        .toString()
+
+    @JavascriptInterface
+    fun setHevyAuto(on: Boolean) { act.getSharedPreferences("h10", Context.MODE_PRIVATE).edit().putBoolean("hevyAuto", on).apply() }
+
+    @JavascriptInterface
+    fun openNotifAccess() = main.post {
+        try { act.startActivity(Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) } catch (_: Exception) { }
+    }
+
     // ---------------- relógio (Wearable Data Layer) ----------------
     private val wearUris = HashMap<String, android.net.Uri>()
     @Volatile private var pendingCmd: String? = null

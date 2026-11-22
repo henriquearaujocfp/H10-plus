@@ -252,6 +252,14 @@
     <div id="nightBody"></div>
     <p id="nightMsg" class="msg"></p>
     <div class="row"><button id="hcBtn" class="primary">Conectar ao Health Connect</button></div>
+    <h3 style="margin:14px 0 4px">Gravar no Health Connect</h3>
+    <p id="hcwMsg" class="msg"></p>
+    <div class="row"><button id="hcwBtn">Permitir gravação</button><button id="hcwAll" class="hidden">Enviar treinos antigos</button></div>
+    <p class="msg">Cada treino vira uma sessão de exercício (tipo, título, resumo, percurso GPS), com FC segundo a segundo, distância, velocidade e calorias; o teste guiado grava o VO2máx; a medição de repouso grava FC de repouso e HRV (RMSSD). Apps que leem o Health Connect passam a ver esses dados.</p>
+    <h3 style="margin:14px 0 4px">Hevy</h3>
+    <p id="hevyMsg" class="msg"></p>
+    <div class="row"><button id="hevyBtn">Iniciar com o Hevy</button></div>
+    <p class="msg">Ligado: quando um treino começa no Hevy (aparece a notificação fixa dele), o Monitor H10 abre e inicia Musculação, no celular e no relógio; quando o treino termina no Hevy, encerra aqui também. Precisa de acesso às notificações (o app só olha as do Hevy).</p>
     <p class="msg">Dados que o relógio grava no Samsung Health e são copiados para o Health Connect. No Samsung Health: Configurações → Health Connect → permitir o compartilhamento. O relógio sincroniza com o celular no ritmo dele; se a noite não aparecer, abra o Samsung Health e depois toque em Atualizar.</p>
   </section>
 
@@ -942,6 +950,46 @@
     return out;
   }
 
+  // ---------- gravação no Health Connect ----------
+  const hcCanWrite = () => !!(NATIVE && NATIVE.hcWrite && hcGranted.includes('w_exercise'));
+  function hcWriteWorkout(w, gpsAbs){
+    if (!hcCanWrite() || !w || !w.hr) return;
+    let a = null; try { a = analyze(w); } catch (e) {}
+    const hr = [];
+    for (let i = 0; i < w.hr.length; i++) if (w.hr[i] > 0) hr.push([w.start + i * 1000, Math.round(w.hr[i])]);
+    const dist = w.gps && w.gps.dist ? w.gps.dist : 0;
+    const durS = (w.end - w.start) / 1000;
+    let exType = 'other';
+    if (w.type === 'forca') exType = 'strength';
+    else if (dist >= 200) exType = dist / Math.max(1, (w.gps.dur || durS)) >= 2.0 ? 'running' : 'walking';
+    const lbl = w.type === 'forca' ? 'Musculação' : 'Cardio';
+    const notes = [];
+    if (a && a.n) {
+      notes.push(`FC média ${Math.round(a.avg)} · máx ${a.max} bpm (${Math.round(a.pctMax)}% da FCmáx)`);
+      notes.push('Zonas (min): ' + a.zoneSec.map((z, i) => `Z${i + 1} ${Math.round(z / 60)}`).join(' · '));
+      notes.push(`TRIMP ${Math.round(a.trimp)}` + (a.fatPct != null ? ` · gordura ~${Math.round(a.fatPct)}% / carboidrato ~${Math.round(a.choPct)}%` : ''));
+    }
+    if (w.hrr && w.hrr.drop) notes.push(`Recuperação 1 min: −${w.hrr.drop} bpm`);
+    if (dist) notes.push(`Distância ${(dist / 1000).toFixed(2)} km` + (w.gps.pace ? ` · pace ${fmtPace(w.gps.pace)}` : ''));
+    if (w.fasted) notes.push('Em jejum');
+    notes.push('Gravado pelo Monitor H10 (Polar H10)');
+    const o = {id: w.sid || w.id, start: w.start, end: w.end, exType, title: `${lbl} · Monitor H10`, notes: notes.join('\n'),
+               hr, dist: dist || null, kcal: a && a.kcal ? Math.round(a.kcal) : null};
+    if (gpsAbs && gpsAbs.length) o.gps = gpsAbs;
+    try { NATIVE.hcWrite('workout', JSON.stringify(o)); } catch (e) {}
+  }
+  function hcWriteAllOld(){
+    if (!hcCanWrite()) return;
+    const list = workouts.filter(w => w.hr && w.end > w.start);
+    let i = 0;
+    $('hcwMsg').textContent = `Enviando ${list.length} treinos…`;
+    const step = () => {
+      if (i >= list.length) { $('hcwMsg').textContent = `${list.length} treinos enviados (sem percurso GPS nos antigos). Treinos já enviados são atualizados, não duplicados.`; return; }
+      hcWriteWorkout(list[i++]); setTimeout(step, 350);
+    };
+    step();
+  }
+
   function endWorkout(opts){
     if (!wk) return;
     const remote = !!(opts && opts.remote);
@@ -963,6 +1011,7 @@
     if (focusOn) exitFocus();
     syncAwake();
     openEval(w.id);
+    hcWriteWorkout(w);
   }
 
   function tickHRR(){
@@ -976,6 +1025,7 @@
       for (const s of hrrCap.samples) if (Math.abs(s[0] - target) <= 3000 && (!best || Math.abs(s[0] - target) < Math.abs(best[0] - target))) best = s;
       w.hrr = best && hrrCap.peak ? {peak: hrrCap.peak, hr60: best[1], drop: hrrCap.peak - best[1]} : {fail: true};
       saveWorkouts(); hrrCap = null;
+      if (w.hrr.drop && !w.gps) hcWriteWorkout(w);
     }
     if (evalId === w.id) renderEvalHRR(w);
   }
@@ -1542,6 +1592,10 @@
     const rec = {id: t.id, start: t.start, end: t.end, mode: t.mode, p: t.p, stageSec: t.stageSec, warm: t.warm, maximal: t.maximal,
                  points: t.points, stages: t.stages, ready: t.ready, cfg: t.cfg, rr: t.rr.map(r => Math.round(r[1])), res};
     tests.push(rec); saveTests();
+    if (hcCanWrite() && hcGranted.includes('w_vo2') && (res.vo2sub || res.vo2uth)) {
+      const v = res.vo2sub ? res.vo2sub.v : res.vo2uth;
+      if (v > 10 && v < 90) try { NATIVE.hcWrite('vo2', JSON.stringify({id: rec.id, t: rec.end, value: v, method: res.vo2sub ? 'other' : 'ratio'})); } catch (e) {}
+    }
     test = null; syncAwake();
     $('testOv').classList.add('hidden');
     renderTestCard();
@@ -1816,6 +1870,9 @@
       hcLoading = false;
       hcGranted = d.granted || hcGranted;
       processHc(d); renderNight();
+    } else if (d.kind === 'written') {
+      const f = Object.keys(d.fail || {});
+      $('hcwMsg').innerHTML = `Health Connect: gravado ${(d.done || []).join(', ') || 'nada'}` + (f.length ? ` · <span class="bad">falhou ${f.map(k => k + ' (' + d.fail[k] + ')').join('; ')}</span>` : '');
     } else if (d.kind === 'error') {
       hcLoading = false;
       $('nightMsg').innerHTML = `<span class="bad">${d.msg}</span>`;
@@ -1881,8 +1938,26 @@
     return out;
   }
 
+  function renderHcWrite(){
+    if (!NATIVE || !NATIVE.hcWrite) { $('hcwBtn').classList.add('hidden'); return; }
+    const ok = hcGranted.includes('w_exercise');
+    $('hcwBtn').textContent = ok ? 'Revisar permissões' : 'Permitir gravação';
+    $('hcwAll').classList.toggle('hidden', !ok);
+    if (!$('hcwMsg').textContent || !ok) $('hcwMsg').textContent = ok
+      ? 'Ligado: treinos, VO2máx e repouso são gravados no Health Connect ao terminar.' + (hcGranted.includes('w_route') ? '' : ' (percurso GPS sem permissão)')
+      : 'Desligado. Toque em "Permitir gravação" e marque os itens de gravação.';
+  }
+  function renderHevy(){
+    if (!NATIVE || !NATIVE.hevyStatus) { $('hevyBtn').classList.add('hidden'); return; }
+    let st = {}; try { st = JSON.parse(NATIVE.hevyStatus()); } catch (e) {}
+    const on = st.auto && st.access;
+    $('hevyBtn').textContent = on ? 'Desligar início pelo Hevy' : (st.auto ? 'Dar acesso às notificações' : 'Iniciar com o Hevy');
+    $('hevyMsg').innerHTML = on ? '<span class="good">Ligado.</span> Comece o treino no Hevy; o H10 inicia Musculação sozinho.'
+      : st.auto ? 'Falta o acesso às notificações: na tela que abrir, ative "Monitor H10 (Hevy)".' : 'Desligado.';
+  }
   function renderNight(){
     if (!NATIVE) return;
+    renderHcWrite();
     const body = $('nightBody'), btn = $('hcBtn');
     if (hcSdk === 'unavailable') { body.innerHTML = '<p class="msg">Health Connect indisponível neste aparelho.</p>'; btn.classList.add('hidden'); return; }
     if (hcSdk === 'update') { body.innerHTML = '<p class="msg">Atualize o Health Connect pela Play Store e tente de novo.</p>'; return; }
@@ -1991,6 +2066,8 @@
     return {dist: Math.round(dist), dur: Math.round(lastT), pace: lastT && dist ? Math.round(lastT / dist * 1000) : null, splits};
   }
   const fmtPace = s => s ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}/km` : '--';
+  // GPS do relógio [s, lat, lon, alt, acc, spd] -> instantes absolutos
+  const gpsAbsOf = o => (o.gps || []).map(p => [Math.round(o.start + p[0] * 1000), p[1], p[2], p[3], p[4], p[5]]);
   function importWear(js, path){
     let o; try { o = JSON.parse(js); } catch (e) { return; }
     const id = o.id || ('ww' + o.start);
@@ -2005,6 +2082,7 @@
       if (cover < 0.6 && wHr.filter(Boolean).length > twin.hr.filter(Boolean).length) twin.hr = wHr;
       twin.source = 'celular+relogio';
       saveWorkouts(); wearImported.push(twin.id);
+      hcWriteWorkout(twin, gpsAbsOf(o));
     } else if (!workouts.some(w => w.id === id)) {
       const samples = (o.hr || []).map(([ms, b]) => [o.start + ms, b]);
       const w = {id, sid: o.sid, type: o.type || 'cardio', fasted: false, start: o.start, end: o.end, cfg: cfgSnap(),
@@ -2013,6 +2091,7 @@
       const g = gpsSummary(o.gps || [], o.dist);
       if (g) w.gps = g;
       workouts.push(w); saveWorkouts();
+      hcWriteWorkout(w, gpsAbsOf(o));
       lastRaw = {id, rows: (o.rr || []).map(([ms, r]) => [new Date(o.start + ms).toISOString(), Math.round(60000 / r), r, '']), ecg: []};
       wearImported.push(id);
     }
@@ -2025,9 +2104,11 @@
     if (c.acao === 'start' && !wk) {
       const t = +c.t || 0;
       if (t && Date.now() - t > 120000) return;   // comando antigo
-      startWorkout({remote: true, sid: c.sid, t, tipo: c.tipo});
+      if (c.origem === 'hevy') { setType('forca'); startWorkout(); }
+      else startWorkout({remote: true, sid: c.sid, t, tipo: c.tipo});
     } else if (c.acao === 'stop' && wk && (!c.sid || c.sid === wk.sid)) {
-      endWorkout({remote: true});
+      if (c.origem === 'hevy') { if (wk.type === 'forca') endWorkout(); }
+      else endWorkout({remote: true});
     }
   }
   function onWear(d){
@@ -2081,6 +2162,16 @@
       if (!hcGranted.includes('sleep')) NATIVE.hcRequest();
       else if (!hcLoading) { hcLoading = true; renderNight(); NATIVE.hcRead(14); }
     });
+    $('hcwBtn').onclick = () => NATIVE.hcRequest();
+    $('hcwAll').onclick = hcWriteAllOld;
+    $('hevyBtn').onclick = () => {
+      let st = {}; try { st = JSON.parse(NATIVE.hevyStatus()); } catch (e) {}
+      if (st.auto && st.access) NATIVE.setHevyAuto(false);
+      else { NATIVE.setHevyAuto(true); if (!st.access) NATIVE.openNotifAccess(); }
+      renderHevy();
+    };
+    renderHevy();
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) renderHevy(); });
     NATIVE.hcStatus();
     if (NATIVE.wearSync) {
       $('wearCard').classList.remove('hidden');
@@ -2223,6 +2314,7 @@
     workouts.push(w); saveWorkouts();
     lastRaw = rows.length ? {id, rows, ecg: []} : null;
     openEval(id);
+    hcWriteWorkout(w);
   }
 
   // botão "voltar" do Android: fecha a tela sobreposta aberta
@@ -2441,6 +2533,8 @@
                ln: +a.ln.toFixed(3), sdnn: +a.sdnn.toFixed(1), beats: a.beats, art: +a.artPct.toFixed(1)});
     hist.sort((x, y) => x.d < y.d ? -1 : 1);
     saveHist();
+    if (hcCanWrite() && hcGranted.includes('w_rhr'))
+      try { NATIVE.hcWrite('rest', JSON.stringify({id: 'r' + rest.start, t: rest.start + 300000, hr: a.hr, rmssd: a.rmssd})); } catch (e) {}
     closeRest();
     renderHistory();
   }
@@ -2753,7 +2847,7 @@
   renderHistory();
 
   // ---------- app instalável (PWA) ----------
-  const APP_VERSION = '2026-11-21.8';
+  const APP_VERSION = '2026-11-21.9';
   $('appVer').textContent = APP_VERSION + (NATIVE ? ' · app Android ' + NATIVE.version() : '');
   nativeInit();
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
