@@ -379,6 +379,7 @@
         <select id="tWarm"><option value="300">5 min</option><option value="420">7 min</option><option value="180">3 min</option></select>
       </div>
       <label class="chk"><input type="checkbox" id="tMax"> Ir até a exaustão para medir a FCmáx real (a cada 6–8 semanas basta)</label>
+      <label class="chk"><input type="checkbox" id="tCaf"> Tomei cafeína antes do teste</label>
       <p id="tWeightMsg" class="msg"></p>
     </section>
     <section class="card">
@@ -1491,6 +1492,7 @@
     if (test) { showTestRun(); return; }
     T_INPUTS.forEach(id => { $(id).value = store.get(id, $(id).value); });
     $('tMax').checked = false;
+    $('tCaf').checked = store.get('tCaf', '0') === '1';
     setTMode(tMode);
     $('tReady').innerHTML = readyHtml(readinessNow()) + nightReadyHtml();
     $('testSetup').classList.remove('hidden'); $('testRun').classList.add('hidden');
@@ -1519,12 +1521,13 @@
   function startTest(){
     if (!(device || demoTimer)) { $('tReady').insertAdjacentHTML('afterbegin', '<p class="status-line bad">Conecte o H10 antes de iniciar.</p>'); return; }
     T_INPUTS.forEach(id => store.set(id, $(id).value));
+    store.set('tCaf', $('tCaf').checked ? '1' : '0');
     const p = tMode === 'esteira' ? {spd: +$('tSpd').value || 6, inc: +$('tSpdInc').value || 1, grade: +$('tGrade').value || 0}
             : tMode === 'bike' ? {w: +$('tW').value || 75, inc: +$('tWInc').value || 25} : {};
     beep(1);
     if (!wk) { setType('cardio'); startWorkout(); }
     test = {id: 't' + Date.now(), start: Date.now(), mode: tMode, p, stageSec: +$('tStage').value, warm: +$('tWarm').value,
-            maximal: $('tMax').checked, rr: [], hr: [], points: [], stages: [], curIdx: 0, vt2Live: false, lastPt: 0,
+            maximal: $('tMax').checked, caf: $('tCaf').checked, rr: [], hr: [], points: [], stages: [], curIdx: 0, vt2Live: false, lastPt: 0,
             ready: readinessNow(), cfg: cfgSnap()};
     syncAwake();
     showTestRun();
@@ -1588,7 +1591,7 @@
     closeStage(t.curIdx, now);
     t.end = now;
     const res = analyzeTest(t);
-    const rec = {id: t.id, start: t.start, end: t.end, mode: t.mode, p: t.p, stageSec: t.stageSec, warm: t.warm, maximal: t.maximal,
+    const rec = {id: t.id, start: t.start, end: t.end, mode: t.mode, p: t.p, stageSec: t.stageSec, warm: t.warm, maximal: t.maximal, caf: !!t.caf,
                  points: t.points, stages: t.stages, ready: t.ready, cfg: t.cfg, rr: t.rr.map(r => Math.round(r[1])), res};
     tests.push(rec); saveTests();
     if (hcCanWrite() && hcGranted.includes('w_vo2') && (res.vo2sub || res.vo2uth)) {
@@ -1766,6 +1769,7 @@
         <span class="conf ${qcls}">Qualidade ${r.quality}: R² ${r.r2 != null ? r.r2.toFixed(2) : '--'} · ${r.nPts} pontos válidos · artefatos ${r.artMean.toFixed(1)}%</span>
         ${(!r.vt1Ok || !r.vt2Ok) ? '<p class="msg">* Valor extrapolado: o alfa1 não cruzou esse limiar durante o teste. Não é usado para definir zonas.</p>' : ''}
         ${t.maximal ? '' : '<p class="msg">Teste submáximo: FCmáx não medida.</p>'}
+        <p class="msg">Cafeína antes do teste: <b>${t.caf ? 'sim' : 'não'}</b> <button id="tCafToggle" style="margin-left:6px;padding:2px 10px">alterar</button></p>
         <p class="msg">${{sem: 'Prontidão: sem medição de repouso no dia.', base: 'Prontidão: linha de base de repouso ainda em construção.', normal: 'Prontidão: lnRMSSD do dia dentro do normal.', alta: 'Prontidão: lnRMSSD do dia acima do normal.', baixa: 'Prontidão: lnRMSSD do dia abaixo do normal. Fadiga pode ter rebaixado os limiares; este teste fica fora da mediana das zonas.'}[t.ready ? t.ready.status : 'sem']}</p>
       </section>
       <section class="card"><h2>DFA alfa1 × FC</h2><canvas id="tResChart" style="height:210px"></canvas>
@@ -1807,6 +1811,7 @@
     requestAnimationFrame(() => drawScatter($('tResChart'), t.points, r.line, [[r.vt1Ok && r.vt1, 'VT1'], [r.vt2Ok && r.vt2, 'VT2']]));
     const am = $('applyMed'); if (am) am.onclick = () => { applyZones(med.vt1, med.vt2, `mediana de ${med.n} teste(s)`, r.hrmax); am.textContent = 'Aplicado ✓'; };
     const at = $('applyThis'); if (at) at.onclick = () => { applyZones(Math.round(r.vt1), Math.round(r.vt2), `teste de ${d.toLocaleDateString('pt-BR')}`, r.hrmax); at.textContent = 'Aplicado ✓'; };
+    $('tCafToggle').onclick = () => { t.caf = !t.caf; saveTests(); renderTestList(); openTest(t.id); };
     $('testDel').onclick = e => {
       const b = e.currentTarget;
       if (b.dataset.armed) { tests = tests.filter(x => x.id !== t.id); saveTests(); closeEval(); renderTestList(); renderTestCard(); }
@@ -1814,15 +1819,31 @@
     };
   }
 
+  // comparação descritiva: testes com × sem cafeína (só testes com os dois limiares válidos)
+  function cafCompareHtml(){
+    const ok = tests.filter(t => t.res && t.res.vt1Ok && t.res.vt2Ok);
+    const g = [ok.filter(t => t.caf), ok.filter(t => !t.caf)];
+    if (!g[0].length || !g[1].length) return '';
+    const m = (a, f) => { const v = a.map(f).filter(x => x != null && isFinite(x)); return v.length ? v.reduce((x, y) => x + y, 0) / v.length : null; };
+    const row = (lbl, a) => {
+      const vo = m(a, t => t.res.vo2sub ? t.res.vo2sub.v : null), vu = m(a, t => t.res.vo2uth);
+      return `<tr><td>${lbl} (${a.length})</td><td>${Math.round(m(a, t => t.res.vt1))}</td><td>${Math.round(m(a, t => t.res.vt2))}</td><td>${vo != null ? fmt1(vo) : '--'}</td><td>${vu != null ? fmt1(vu) : '--'}</td></tr>`;
+    };
+    const few = g[0].length < 3 || g[1].length < 3;
+    return `<div style="margin-top:12px"><h3 style="margin:0 0 4px">Com × sem cafeína</h3>
+      <table><tr><th>Testes</th><th>VT1</th><th>VT2</th><th>VO2 carga</th><th>VO2 FC</th></tr>${row('Com', g[0])}${row('Sem', g[1])}</table>
+      <p class="msg">Médias simples dos testes com os dois limiares válidos.${few ? ' Com menos de 3 testes em algum grupo, a diferença está dentro da variação normal entre testes e não permite conclusão.' : ' Diferenças de poucos bpm ou menos de ~1 ml/kg/min estão dentro da variação entre testes.'}</p></div>`;
+  }
   function renderTestList(){
     const list = [...tests].sort((a, b) => b.start - a.start);
     $('testList').innerHTML = list.length ? list.map(t => {
       const d = new Date(t.start), r = t.res;
       const modeL = {esteira: 'Esteira', bike: 'Bicicleta', livre: 'Livre'}[t.mode];
       return `<button class="wkItem" data-tid="${t.id}">
-        <div class="t1"><span>${modeL}${t.maximal ? '<span class="tag">máximo</span>' : ''}${t.ready && t.ready.status === 'baixa' ? '<span class="tag">fadiga</span>' : ''}</span><span>${d.toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit', year: '2-digit'})}</span></div>
+        <div class="t1"><span>${modeL}${t.maximal ? '<span class="tag">máximo</span>' : ''}${t.ready && t.ready.status === 'baixa' ? '<span class="tag">fadiga</span>' : ''}${t.caf ? '<span class="tag">cafeína</span>' : ''}</span><span>${d.toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit', year: '2-digit'})}</span></div>
         <div class="t2">VT1 ${r.vt1 ? Math.round(r.vt1) + (r.vt1Ok ? '' : '*') : '--'} · VT2 ${r.vt2 ? Math.round(r.vt2) + (r.vt2Ok ? '' : '*') : '--'}${r.hrmax ? ' · FCmáx ' + r.hrmax : ''} · VO2 ${r.vo2sub ? fmt1(r.vo2sub.v) : '--'} / ${fmt1(r.vo2uth)} · qualidade ${r.quality}</div></button>`;
     }).join('') : '<p class="msg">Nenhum teste ainda. Use "Teste guiado" na aba Monitor.</p>';
+    $('testList').insertAdjacentHTML('beforeend', cafCompareHtml());
     const good = list.filter(t => t.res.vt1Ok && t.res.vt2Ok).reverse();
     const cv = $('testTrend');
     cv.classList.toggle('hidden', good.length < 2);
@@ -2073,7 +2094,7 @@
       try {
         const from = Date.now() - 60 * DAY;
         o.vo2t = tests.filter(t => t.end >= from && t.res && (t.res.vo2sub || t.res.vo2uth))
-          .map(t => [t.end, t.res.vo2sub ? t.res.vo2sub.v : t.res.vo2uth]).sort((a, b) => a[0] - b[0]);
+          .map(t => [t.end, t.res.vo2sub ? t.res.vo2sub.v : t.res.vo2uth, t.caf ? 1 : 0]).sort((a, b) => a[0] - b[0]);
         const hm = hrMaxRef().v;
         o.vo2u = seriesFor('deitado').filter(p => p.t >= from && p.hr > 30).map(p => [p.t, Math.round(15.3 * hm / p.hr * 10) / 10]);
       } catch (e) {}
@@ -2897,7 +2918,7 @@
   renderHistory();
 
   // ---------- app instalável (PWA) ----------
-  const APP_VERSION = '2026-11-22.2';
+  const APP_VERSION = '2026-11-22.3';
   $('appVer').textContent = APP_VERSION + (NATIVE ? ' · app Android ' + NATIVE.version() : '');
   nativeInit();
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

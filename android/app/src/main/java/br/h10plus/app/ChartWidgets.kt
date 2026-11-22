@@ -37,6 +37,7 @@ abstract class ChartWidgetBase : AppWidgetProvider() {
         const val LIGHT = 0xFFD0D4DA.toInt()
         const val TRACK = 0xFF262A31.toInt()
         const val BG = 0xFF121418.toInt()
+        const val CAF = 0xFFF2C230.toInt()
         val zone: ZoneId get() = ZoneId.systemDefault()
         private val fmt = DateTimeFormatter.ofPattern("dd/MM")
 
@@ -188,6 +189,8 @@ class Vo2Widget : ChartWidgetBase() {
                     .filter { it.first >= from && it.second in 15.0..90.0 }.sortedBy { it.first }
             }
             val tests = pts(s.optJSONArray("vo2t")); val uth = pts(s.optJSONArray("vo2u"))
+            val cafSet = HashSet<Long>()
+            s.optJSONArray("vo2t")?.let { a -> for (i in 0 until a.length()) a.optJSONArray(i)?.let { if (it.optInt(2) == 1) cafSet.add(it.optLong(0)) } }
             val sub = when {
                 tests.isNotEmpty() -> {
                     val last = tests.last().second
@@ -202,13 +205,13 @@ class Vo2Widget : ChartWidgetBase() {
                 val v = RemoteViews(ctx.packageName, R.layout.widget_chart)
                 v.setTextViewText(R.id.cTitle, "VO2máx · 30 dias")
                 v.setTextViewText(R.id.cSub, sub)
-                v.setImageViewBitmap(R.id.cImg, draw(ctx, w, h, tests, uth, from, now))
+                v.setImageViewBitmap(R.id.cImg, draw(ctx, w, h, tests, uth, from, now, cafSet))
                 v.setOnClickPendingIntent(R.id.cRoot, openApp(ctx))
                 mgr.updateAppWidget(id, v)
             }
         }
 
-        private fun draw(ctx: Context, w: Int, h: Int, tests: List<Pair<Long, Double>>, uth: List<Pair<Long, Double>>, from: Long, to: Long): Bitmap {
+        private fun draw(ctx: Context, w: Int, h: Int, tests: List<Pair<Long, Double>>, uth: List<Pair<Long, Double>>, from: Long, to: Long, caf: Set<Long>): Bitmap {
             val b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888); val c = Canvas(b)
             val dpx = ctx.resources.displayMetrics.density
             val small = paint(GREY, 10f, ctx)
@@ -240,7 +243,8 @@ class Vo2Widget : ChartWidgetBase() {
             }
             val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = BG }
             val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt(); strokeWidth = 2 * dpx; style = Paint.Style.STROKE }
-            for ((t, v) in tests) { c.drawCircle(x(t), y(v), 4 * dpx, fill); c.drawCircle(x(t), y(v), 4 * dpx, ring) }
+            val cafRing = Paint(ring).apply { color = CAF }
+            for ((t, v) in tests) { c.drawCircle(x(t), y(v), 4 * dpx, fill); c.drawCircle(x(t), y(v), 4 * dpx, if (t in caf) cafRing else ring) }
             // eixo de datas
             val f = Instant.ofEpochMilli(from).atZone(zone).toLocalDate(); val l = Instant.ofEpochMilli(to).atZone(zone).toLocalDate()
             c.drawText(dm(f), padL, bot + axisH * 0.85f, small)
@@ -253,6 +257,11 @@ class Vo2Widget : ChartWidgetBase() {
             lx += 9 * dpx; c.drawText("Teste guiado", lx, ly, lp); lx += lp.measureText("Teste guiado") + 14 * dpx
             c.drawCircle(lx, ly - lp.textSize / 3, 3 * dpx, dot); lx += 7 * dpx
             c.drawText("Razão de FC (repouso)", lx, ly, lp)
+            if (tests.any { it.first in caf }) {
+                lx += lp.measureText("Razão de FC (repouso)") + 14 * dpx
+                c.drawCircle(lx, ly - lp.textSize / 3, 4 * dpx, fill); c.drawCircle(lx, ly - lp.textSize / 3, 4 * dpx, cafRing)
+                lx += 9 * dpx; c.drawText("Cafeína", lx, ly, lp)
+            }
             return b
         }
     }
