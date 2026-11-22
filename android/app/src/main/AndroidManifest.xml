@@ -83,17 +83,6 @@
             </intent-filter>
         </activity-alias>
 
-        <!-- detecta o treino em andamento do Hevy (notificação fixa) para iniciar/encerrar a musculação -->
-        <service
-            android:name=".HevyListener"
-            android:exported="true"
-            android:label="Monitor H10 (Hevy)"
-            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
-            <intent-filter>
-                <action android:name="android.service.notification.NotificationListenerService" />
-            </intent-filter>
-        </service>
-
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.files"

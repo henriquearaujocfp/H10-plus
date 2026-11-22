@@ -257,9 +257,7 @@
     <div class="row"><button id="hcwBtn">Permitir gravação</button><button id="hcwAll" class="hidden">Enviar treinos antigos</button></div>
     <p class="msg">Cada treino vira uma sessão de exercício (tipo, título, resumo, percurso GPS), com FC segundo a segundo, distância, velocidade e calorias; o teste guiado grava o VO2máx; a medição de repouso grava FC de repouso e HRV (RMSSD). Apps que leem o Health Connect passam a ver esses dados.</p>
     <h3 style="margin:14px 0 4px">Hevy</h3>
-    <p id="hevyMsg" class="msg"></p>
-    <div class="row"><button id="hevyBtn">Iniciar com o Hevy</button></div>
-    <p class="msg">Ligado: quando um treino começa no Hevy (aparece a notificação fixa dele), o Monitor H10 abre e inicia Musculação, no celular e no relógio; quando o treino termina no Hevy, encerra aqui também. Precisa de acesso às notificações (o app só olha as do Hevy).</p>
+    <p class="msg">Para iniciar/encerrar a musculação junto com o Hevy, use o MacroDroid abrindo os links <code>h10plus://treino?acao=start&amp;tipo=forca&amp;origem=hevy</code> e <code>h10plus://treino?acao=stop&amp;origem=hevy</code>.</p>
     <p class="msg">Dados que o relógio grava no Samsung Health e são copiados para o Health Connect. No Samsung Health: Configurações → Health Connect → permitir o compartilhamento. O relógio sincroniza com o celular no ritmo dele; se a noite não aparecer, abra o Samsung Health e depois toque em Atualizar.</p>
   </section>
 
@@ -1947,14 +1945,6 @@
       ? 'Ligado: treinos, VO2máx e repouso são gravados no Health Connect ao terminar.' + (hcGranted.includes('w_route') ? '' : ' (percurso GPS sem permissão)')
       : 'Desligado. Toque em "Permitir gravação" e marque os itens de gravação.';
   }
-  function renderHevy(){
-    if (!NATIVE || !NATIVE.hevyStatus) { $('hevyBtn').classList.add('hidden'); return; }
-    let st = {}; try { st = JSON.parse(NATIVE.hevyStatus()); } catch (e) {}
-    const on = st.auto && st.access;
-    $('hevyBtn').textContent = on ? 'Desligar início pelo Hevy' : (st.auto ? 'Dar acesso às notificações' : 'Iniciar com o Hevy');
-    $('hevyMsg').innerHTML = on ? '<span class="good">Ligado.</span> Comece o treino no Hevy; o H10 inicia Musculação sozinho.'
-      : st.auto ? 'Falta o acesso às notificações: na tela que abrir, ative "Monitor H10 (Hevy)".' : 'Desligado.';
-  }
   function renderNight(){
     if (!NATIVE) return;
     renderHcWrite();
@@ -2164,14 +2154,6 @@
     });
     $('hcwBtn').onclick = () => NATIVE.hcRequest();
     $('hcwAll').onclick = hcWriteAllOld;
-    $('hevyBtn').onclick = () => {
-      let st = {}; try { st = JSON.parse(NATIVE.hevyStatus()); } catch (e) {}
-      if (st.auto && st.access) NATIVE.setHevyAuto(false);
-      else { NATIVE.setHevyAuto(true); if (!st.access) NATIVE.openNotifAccess(); }
-      renderHevy();
-    };
-    renderHevy();
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) renderHevy(); });
     NATIVE.hcStatus();
     if (NATIVE.wearSync) {
       $('wearCard').classList.remove('hidden');
@@ -2847,7 +2829,7 @@
   renderHistory();
 
   // ---------- app instalável (PWA) ----------
-  const APP_VERSION = '2026-11-21.9';
+  const APP_VERSION = '2026-11-21.10';
   $('appVer').textContent = APP_VERSION + (NATIVE ? ' · app Android ' + NATIVE.version() : '');
   nativeInit();
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
