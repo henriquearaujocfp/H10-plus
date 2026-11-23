@@ -185,7 +185,7 @@ class WorkoutService : Service() {
                 val zero = SystemClock.elapsedRealtime() - (System.currentTimeMillis() - WorkoutState.startMs)
                 val status = Status.Builder()
                     .addTemplate("#tipo# · #tempo#")
-                    .addPart("tipo", Status.TextPart(if (WorkoutState.type == "forca") "Musculação" else "Cardio"))
+                    .addPart("tipo", Status.TextPart(if (WorkoutState.type == "forca") "Musculação" else if (WorkoutState.useGps) "Cardio outdoor" else "Cardio indoor"))
                     .addPart("tempo", Status.StopwatchPart(zero))
                     .build()
                 OngoingActivity.Builder(applicationContext, NOTIF_ID, builder)
@@ -342,7 +342,7 @@ class WorkoutService : Service() {
         // iniciado pelo celular: usa o mesmo instante de início (se for recente) para os dois treinos baterem
         WorkoutState.startMs = if (remote && t > 0 && now - t in 0..120000) t else now
         WorkoutState.sid = intent.getStringExtra(EXTRA_SID) ?: "w${WorkoutState.startMs}"
-        if (!remote) sendCmdToPhone("start", mapOf("sid" to WorkoutState.sid, "t" to WorkoutState.startMs.toString(), "tipo" to WorkoutState.type))
+        if (!remote) sendCmdToPhone("start", mapOf("sid" to WorkoutState.sid, "t" to WorkoutState.startMs.toString(), "tipo" to WorkoutState.type, "amb" to if (WorkoutState.useGps) "out" else "in"))
         WorkoutState.distanceM = 0.0; WorkoutState.paceSecKm = 0.0; WorkoutState.gpsFix = false
         WorkoutState.phase = WorkoutState.Phase.RUNNING
         WorkoutState.message = ""
@@ -386,6 +386,7 @@ class WorkoutService : Service() {
             .put("id", "ww$start")
             .put("sid", WorkoutState.sid)
             .put("type", WorkoutState.type)
+            .put("amb", if (WorkoutState.type == "cardio" && WorkoutState.useGps) "out" else "in")
             .put("start", start).put("end", end)
             .put("dist", WorkoutState.distanceM)
             .put("hr", JSONArray().apply { hrSamples.filter { it[0] <= tEnd }.forEach { put(JSONArray().put(it[0]).put(it[1])) } })

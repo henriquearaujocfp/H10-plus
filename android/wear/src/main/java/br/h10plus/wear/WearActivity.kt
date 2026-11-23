@@ -41,7 +41,7 @@ import kotlinx.coroutines.tasks.await
 
 /**
  * Tela do relógio.
- * - Antes do treino: tipo (cardio/musculação), GPS e Iniciar.
+ * - Antes do treino: tipo (cardio indoor, cardio outdoor com GPS, musculação) e Iniciar.
  * - Durante o treino: fundo na cor da zona, anel de zonas na borda, FC grande, toque BLOQUEADO.
  *   Encerrar = segurar o botão Voltar por 5 s (o mesmo botão que encerra exercícios no Samsung Health).
  */
@@ -171,14 +171,15 @@ class WearActivity : ComponentActivity() {
         tvStatus = label(12f, 0xFFC9D1D9.toInt())
         tvIdleHr = label(40f, bold = true)
         val typeRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
-        btnCardio = pill("Cardio", 0xFF58A6FF.toInt(), Color.BLACK, 12f)
-        btnForca = pill("Musculação", 0xFF21262D.toInt(), size = 12f)
-        btnCardio.setOnClickListener { WorkoutState.type = "cardio"; WorkoutState.useGps = true; render() }
-        btnForca.setOnClickListener { WorkoutState.type = "forca"; WorkoutState.useGps = false; render() }
+        // três opções: Cardio indoor (sem GPS), Cardio outdoor (GPS) e Musculação
+        btnCardio = pill("Indoor", 0xFF58A6FF.toInt(), Color.BLACK, 12f)
+        btnForca = pill("Outdoor", 0xFF21262D.toInt(), size = 12f)
+        btnCardio.setOnClickListener { WorkoutState.type = "cardio"; WorkoutState.useGps = false; render() }
+        btnForca.setOnClickListener { WorkoutState.type = "cardio"; WorkoutState.useGps = true; render() }
         typeRow.addView(btnCardio, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = dp(3) })
         typeRow.addView(btnForca, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(3) })
-        btnGps = pill("GPS ligado", 0xFF21262D.toInt(), size = 12f)
-        btnGps.setOnClickListener { WorkoutState.useGps = !WorkoutState.useGps; render() }
+        btnGps = pill("Musculação", 0xFF21262D.toInt(), size = 12f)
+        btnGps.setOnClickListener { WorkoutState.type = "forca"; WorkoutState.useGps = false; render() }
         btnStart = pill("▶ Iniciar", 0xFF2FBF71.toInt(), Color.BLACK, 16f)
         btnStart.setOnClickListener { startWorkout() }
         tvMsg = label(11f, 0xFFFFD28A.toInt())
@@ -228,7 +229,7 @@ class WearActivity : ComponentActivity() {
             "start" -> {
                 if (inWorkout()) return
                 WorkoutState.type = if (uri.getQueryParameter("tipo") == "forca") "forca" else "cardio"
-                WorkoutState.useGps = WorkoutState.type == "cardio"
+                WorkoutState.useGps = WorkoutState.type == "cardio" && uri.getQueryParameter("amb") != "in"
                 if (!hasBle()) { requestPermsAndConnect(); return }
                 vibrate(120)
                 val i = Intent(this, WorkoutService::class.java).setAction(WorkoutService.ACTION_START)
@@ -396,12 +397,11 @@ class WearActivity : ComponentActivity() {
             val bat = if (st.battery >= 0) " · bat. ${st.battery}%" else ""
             tvStatus.text = "H10 ${st.connState}$bat"
             tvIdleHr.text = if (hr > 0) "$hr bpm" else "--"
-            val cardio = st.type == "cardio"
-            (btnCardio.background as GradientDrawable).setColor(if (cardio) 0xFF58A6FF.toInt() else 0xFF21262D.toInt())
-            btnCardio.setTextColor(if (cardio) Color.BLACK else Color.WHITE)
-            (btnForca.background as GradientDrawable).setColor(if (!cardio) 0xFF58A6FF.toInt() else 0xFF21262D.toInt())
-            btnForca.setTextColor(if (!cardio) Color.BLACK else Color.WHITE)
-            btnGps.text = if (st.useGps) "GPS ligado" else "GPS desligado"
+            val sel = when { st.type == "forca" -> 2; st.useGps -> 1; else -> 0 }
+            listOf(btnCardio, btnForca, btnGps).forEachIndexed { k, b ->
+                (b.background as GradientDrawable).setColor(if (k == sel) 0xFF58A6FF.toInt() else 0xFF21262D.toInt())
+                b.setTextColor(if (k == sel) Color.BLACK else Color.WHITE)
+            }
             btnStart.alpha = if (st.connState == "conectado") 1f else 0.6f
             tvMsg.text = st.message
             return
@@ -434,7 +434,7 @@ class WearActivity : ComponentActivity() {
                     val km = "%.2f km".format(st.distanceM / 1000).replace('.', ',')
                     val spd = if (st.paceSecKm > 0 && st.paceSecKm < 1800) "  " + "%.1f km/h".format(3600.0 / st.paceSecKm).replace('.', ',') else ""
                     if (st.gpsFix || st.distanceM > 0) km + spd else "Aguardando GPS…"
-                } else "Musculação"
+                } else if (st.type == "forca") "Musculação" else "Cardio indoor"
                 tvBottom.background = null
                 // teste guiado: etapa, carga atual e aviso 5 s antes da troca
                 if (st.testActive(now)) {
