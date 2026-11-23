@@ -81,38 +81,38 @@ class BubbleOverlay(base: Context) {
     private fun create() {
         compact = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setPadding(dpi(10), dpi(6), dpi(12), dpi(6))
+            setPadding(dpi(20), dpi(12), dpi(24), dpi(12))
         }
-        cHr = tv(24f, Color.BLACK, true)
-        cSub = tv(11f, Color.BLACK).apply { setPadding(dpi(6), 0, 0, 0) }
+        cHr = tv(48f, Color.BLACK, true)
+        cSub = tv(22f, Color.BLACK).apply { setPadding(dpi(12), 0, 0, 0) }
         compact.addView(cHr); compact.addView(cSub)
 
         card = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dpi(10), dpi(8), dpi(10), dpi(10))
-            background = GradientDrawable().apply { cornerRadius = dp(18f); setColor(0xF2121418.toInt()) }
+            setPadding(dpi(20), dpi(16), dpi(20), dpi(20))
+            background = GradientDrawable().apply { cornerRadius = dp(36f); setColor(0xF2121418.toInt()) }
             visibility = View.GONE
         }
         val head = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        eHead = tv(11f, 0xFF8A8F98.toInt())
-        val close = tv(16f, 0xFFD0D4DA.toInt(), true).apply {
-            text = "✕"; setPadding(dpi(12), dpi(2), dpi(2), dpi(2))
+        eHead = tv(22f, 0xFF8A8F98.toInt())
+        val close = tv(32f, 0xFFD0D4DA.toInt(), true).apply {
+            text = "✕"; setPadding(dpi(24), dpi(4), dpi(4), dpi(4))
             setOnClickListener { LiveHub.bubbleDismissed = true; remove() }
         }
         head.addView(eHead, LinearLayout.LayoutParams(0, -2, 1f)); head.addView(close)
-        eHr = tv(36f, Color.WHITE, true).apply { setPadding(0, dpi(2), 0, dpi(2)) }
-        eZone = tv(11f, Color.BLACK, true).apply { setPadding(dpi(6), dpi(1), dpi(6), dpi(1)) }
+        eHr = tv(72f, Color.WHITE, true).apply { setPadding(0, dpi(4), 0, dpi(4)) }
+        eZone = tv(22f, Color.BLACK, true).apply { setPadding(dpi(12), dpi(2), dpi(12), dpi(2)) }
         eBar = ImageView(ctx)
-        eL1 = tv(11f, 0xFFD0D4DA.toInt()); eL2 = tv(11f, 0xFFD0D4DA.toInt())
+        eL1 = tv(22f, 0xFFD0D4DA.toInt()); eL2 = tv(22f, 0xFFD0D4DA.toInt())
         card.addView(head, LinearLayout.LayoutParams(-1, -2))
         card.addView(eHr)
         card.addView(eZone, LinearLayout.LayoutParams(-2, -2))
-        card.addView(eBar, LinearLayout.LayoutParams(-1, dpi(6)).apply { topMargin = dpi(8) })
-        card.addView(eL1, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dpi(6) })
+        card.addView(eBar, LinearLayout.LayoutParams(-1, dpi(12)).apply { topMargin = dpi(16) })
+        card.addView(eL1, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dpi(12) })
         card.addView(eL2)
 
         val r = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-        r.addView(compact); r.addView(card, LinearLayout.LayoutParams(dpi(180), -2))
+        r.addView(compact); r.addView(card, LinearLayout.LayoutParams(dpi(340), -2))
 
         val p = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
@@ -122,7 +122,7 @@ class BubbleOverlay(base: Context) {
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             val sw = ctx.resources.displayMetrics.widthPixels
-            x = LiveHub.prefs(ctx).getInt("bx", sw - dpi(110))
+            x = LiveHub.prefs(ctx).getInt("bx", sw - dpi(220))
             y = LiveHub.prefs(ctx).getInt("by", dpi(160))
         }
 
@@ -176,7 +176,7 @@ class BubbleOverlay(base: Context) {
         // compacta
         val bg = when { alert -> 0xFFF2C230.toInt(); z >= 0 -> LiveHub.ZONE[z]; else -> 0xFF30343B.toInt() }
         val fg = when { alert -> 0xFF3A2A00.toInt(); z >= 0 -> LiveHub.ZONE_DARK[z]; else -> Color.WHITE }
-        compact.background = GradientDrawable().apply { cornerRadius = dp(28f); setColor(bg) }
+        compact.background = GradientDrawable().apply { cornerRadius = dp(56f); setColor(bg) }
         cHr.setTextColor(fg); cSub.setTextColor(fg)
         cHr.text = if (hr > 0) hr.toString() else "--"
         cSub.text = when {
@@ -194,7 +194,7 @@ class BubbleOverlay(base: Context) {
             eHr.setTextColor(if (z >= 0) LiveHub.ZONE[z] else Color.WHITE)
             if (z >= 0) {
                 eZone.text = LiveHub.ZONE_NAMES[z]; eZone.setTextColor(LiveHub.ZONE_DARK[z])
-                eZone.background = GradientDrawable().apply { cornerRadius = dp(4f); setColor(LiveHub.ZONE[z]) }
+                eZone.background = GradientDrawable().apply { cornerRadius = dp(8f); setColor(LiveHub.ZONE[z]) }
             } else { eZone.text = if (hr > 0) "abaixo de Z1" else "sem sinal"; eZone.setTextColor(0xFF8A8F98.toInt()); eZone.background = null }
             if (test != null) {
                 eBar.visibility = View.GONE
@@ -203,7 +203,7 @@ class BubbleOverlay(base: Context) {
                 eL2.text = if (test.optBoolean("vt2") && !test.optBoolean("max")) "VT2 atingido: pode concluir" else "Próxima: ${test.optString("next")}"
             } else {
                 eBar.visibility = View.VISIBLE
-                eBar.setImageBitmap(LiveHub.zoneBar(dpi(160), dpi(6), dp(3f)))
+                eBar.setImageBitmap(LiveHub.zoneBar(dpi(300), dpi(12), dp(6f)))
                 val avg = s.optDouble("avg", 0.0)
                 eL1.setTextColor(0xFFD0D4DA.toInt())
                 eL1.text = "Média ${if (avg > 0) avg.toInt() else "--"} · TRIMP ${s.optDouble("trimp", 0.0).toInt()}"
