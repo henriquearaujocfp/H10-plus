@@ -103,7 +103,10 @@ class MainActivity : AppCompatActivity() {
             override fun handleOnBackPressed() {
                 // o site trata o "voltar" (fecha telas sobrepostas); se não houver nada aberto, sai do app
                 web.evaluateJavascript("(window.__h10back && window.__h10back()) ? 1 : 0") { r ->
-                    if (r != "1") {
+                    if (r != "1" && LiveHub.active) {
+                        // treino em andamento: "voltar" só manda o app para segundo plano (não fecha a tela nem o treino)
+                        moveTaskToBack(true)
+                    } else if (r != "1") {
                         isEnabled = false
                         onBackPressedDispatcher.onBackPressed()
                         isEnabled = true
