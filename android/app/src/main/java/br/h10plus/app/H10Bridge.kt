@@ -211,6 +211,7 @@ class H10Bridge(private val act: MainActivity, private val web: WebView) {
                             .put("contact", if (s.contactStatusSupported) s.contactStatus else JSONObject.NULL)
                         emit("hr", o)
                         H10Widget.live(act.applicationContext, s.hr)
+                        LiveHub.nativeHr = s.hr; LiveHub.nativeHrAt = System.currentTimeMillis()
                     }
                 }
             } catch (e: CancellationException) {
@@ -333,6 +334,28 @@ class H10Bridge(private val act: MainActivity, private val web: WebView) {
 
     @JavascriptInterface
     fun hcRead(days: Int) = main.post { health.read(days) }
+
+    // ---------------- treino ativo: notificação fixa e bolha ----------------
+    @JavascriptInterface
+    fun liveState(json: String) = main.post {
+        if (json.contains("\"active\":true") && !LiveHub.active) act.requestNotifPermission()
+        LiveHub.update(act.applicationContext, json)
+    }
+
+    @JavascriptInterface
+    fun overlayStatus(): String = JSONObject()
+        .put("perm", android.provider.Settings.canDrawOverlays(act))
+        .put("on", LiveHub.bubbleOn(act)).toString()
+
+    @JavascriptInterface
+    fun setBubble(on: Boolean) { LiveHub.setBubble(act, on); if (on) LiveHub.bubbleDismissed = false }
+
+    @JavascriptInterface
+    fun openOverlayPerm() = main.post {
+        try {
+            act.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + act.packageName)))
+        } catch (_: Exception) { }
+    }
 
     @JavascriptInterface
     fun widgetUpdate(json: String) = main.post { H10Widget.setSummary(act.applicationContext, json) }

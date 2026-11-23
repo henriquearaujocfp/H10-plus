@@ -314,6 +314,10 @@
       <label for="idade">Idade</label>
       <input id="idade" type="number" min="15" max="90" value="41">
     </div>
+    <div id="bubbleCfg" class="hidden" style="margin-top:12px">
+      <label class="chk"><input type="checkbox" id="bubbleOn"> Telinha flutuante sobre outros apps durante o treino</label>
+      <p id="bubbleMsg" class="msg"></p>
+    </div>
     <div class="row" style="align-items:center;gap:10px;margin-top:8px">
       <label for="zmode">Base das zonas</label>
       <select id="zmode" style="flex:1"><option value="pct">% da FCmáx</option><option value="limiar">Limiares medidos (VT1/VT2)</option></select>
@@ -927,6 +931,7 @@
     hrrCap = null;
     try { navigator.vibrate && navigator.vibrate(60); } catch (e) {}
     updateWkUI(); renderZones(); syncAwake(); saveWip(); pushWidget();
+    setTimeout(pushLive, 300);
   }
 
   function onWorkoutSample(t, hr, rr, contact){
@@ -998,6 +1003,7 @@
 
   function endWorkout(opts){
     if (!wk) return;
+    try { NATIVE && NATIVE.liveState && NATIVE.liveState('{"active":false}'); } catch (e) {}
     const remote = !!(opts && opts.remote);
     if (!remote && NATIVE && NATIVE.wearCmd && wk.sid) NATIVE.wearCmd('stop', JSON.stringify({sid: wk.sid}));
     const end = Date.now();
@@ -1619,7 +1625,7 @@
     $('tNext').classList.toggle('alert', soon);
     $('tNext').textContent = soon ? `AJUSTE → ${nextL} em ${Math.ceil(ph.left)}` : `Próxima: ${nextL} em ${fmtDur(ph.left)}`;
     t.guide = {ph: ph.idx === 0 ? 'Aquecimento' : `Etapa ${ph.idx}`, load: fmtLoad(t.mode, loadAt(t, ph.idx), t.p), next: nextL,
-               left: Math.round(ph.left * 10) / 10, idx: ph.idx, vt2: t.vt2Live, max: t.maximal};
+               left: Math.round(ph.left * 10) / 10, idx: ph.idx, vt2: t.vt2Live, max: t.maximal, warm: t.warm, stage: t.stageSec};
     $('tHR').textContent = Date.now() - lastReadingT < 5000 && lastHR ? lastHR : '--';
     const lp = t.points[t.points.length - 1];
     const a1el = $('tA1');
@@ -2234,6 +2240,10 @@
       if (c.origem === 'hevy') { setType('forca'); startWorkout(); }
       else if (c.origem === 'widget') { setType(c.tipo === 'forca' ? 'forca' : 'cardio'); startWorkout(); }
       else startWorkout({remote: true, sid: c.sid, t, tipo: c.tipo});
+    } else if (c.acao === 'foco' && wk) {
+      enterFocus();
+    } else if (c.acao === 'bolha') {
+      if (NATIVE && NATIVE.setBubble) { NATIVE.setBubble(true); NATIVE.openOverlayPerm(); }
     } else if (c.acao === 'repouso' && !wk && !rest) {
       // aguarda a cinta conectar (até 30 s) antes de abrir a medição
       let n = 0;
@@ -2296,6 +2306,17 @@
       else if (!hcLoading) { hcLoading = true; renderNight(); NATIVE.hcRead(14); }
     });
     $('hcwBtn').onclick = () => NATIVE.hcRequest();
+    if (NATIVE.overlayStatus) {
+      if (!wk) NATIVE.liveState('{"active":false}');
+      renderBubbleCfg();
+      $('bubbleOn').onchange = e => {
+        let st = {}; try { st = JSON.parse(NATIVE.overlayStatus()); } catch (err) {}
+        NATIVE.setBubble(e.target.checked);
+        if (e.target.checked && !st.perm) NATIVE.openOverlayPerm();
+        renderBubbleCfg();
+      };
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) renderBubbleCfg(); });
+    }
     $('hcwAll').onclick = hcWriteAllOld;
     NATIVE.hcStatus();
     if (NATIVE.wearSync) {
@@ -2801,8 +2822,31 @@
     }).join('');
   }
 
+  // ---------- notificação fixa e bolha (Android) ----------
+  let liveN = 0;
+  function pushLive(){
+    if (!NATIVE || !NATIVE.liveState || !wk) return;
+    const wl = typeof wearLive !== 'undefined' && wearLive && Date.now() - wearLive.at < 8000 ? wearLive : null;
+    const own = device && Date.now() - lastReadingT < 5000 ? lastHR : 0;
+    NATIVE.liveState(JSON.stringify({
+      active: true, type: TYPE_LBL[wk.type], start: wk.start, hr: own || (wl && wl.hr > 0 ? wl.hr : 0), zb: curZB(),
+      avg: wk.n ? wk.sum / wk.n : 0, max: wk.max, trimp: wk.trimp, zs: wk.zoneSec,
+      dist: wl && wl.gps ? wl.dist || 0 : 0, spd: wl && wl.pace > 0 && wl.pace < 1800 ? 3600 / wl.pace : 0,
+      test: test && test.guide ? test.guide : null
+    }));
+  }
+  function renderBubbleCfg(){
+    if (!NATIVE || !NATIVE.overlayStatus) return;
+    $('bubbleCfg').classList.remove('hidden');
+    let st = {}; try { st = JSON.parse(NATIVE.overlayStatus()); } catch (e) {}
+    $('bubbleOn').checked = !!(st.on && st.perm);
+    $('bubbleMsg').textContent = !st.perm ? 'Falta a permissão "Sobrepor a outros apps": marque a opção para abrir a tela de permissão.'
+      : st.on ? 'Aparece só com treino ativo e só quando o Monitor H10 não está na tela. Toque para expandir, arraste para mover.' : 'Desligada.';
+  }
+
   let liveTick = 0;
   setInterval(() => {
+    if (wk && ++liveN % 2 === 0) pushLive();
     tickHRR();
     tickTest();
     if (wk && NATIVE && NATIVE.wearLive) {
@@ -2976,7 +3020,7 @@
   renderHistory();
 
   // ---------- app instalável (PWA) ----------
-  const APP_VERSION = '2026-11-22.4';
+  const APP_VERSION = '2026-11-23.1';
   $('appVer').textContent = APP_VERSION + (NATIVE ? ' · app Android ' + NATIVE.version() : '');
   nativeInit();
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

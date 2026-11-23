@@ -121,6 +121,16 @@ class MainActivity : AppCompatActivity() {
         intent.data?.let { bridge.onDeepLink(it) }
     }
 
+    private val notifLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    fun requestNotifPermission() {
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
+            try { notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) } catch (_: Exception) { }
+    }
+
+    override fun onStart() { super.onStart(); LiveHub.appVisible = true }
+    override fun onStop() { LiveHub.appVisible = false; super.onStop() }
+
     fun requestBlePermissions() {
         val perms = if (Build.VERSION.SDK_INT >= 31)
             arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
