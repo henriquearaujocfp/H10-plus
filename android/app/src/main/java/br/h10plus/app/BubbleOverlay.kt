@@ -18,7 +18,13 @@ import android.widget.TextView
 import kotlin.math.abs
 
 /** Telinha flutuante sobre os outros apps durante o treino (só quando o app não está na tela). */
-class BubbleOverlay(private val ctx: Context) {
+class BubbleOverlay(base: Context) {
+    // Android 11+: janelas sobrepostas devem usar um contexto de janela do tipo overlay
+    private val ctx: Context = if (android.os.Build.VERSION.SDK_INT >= 30) try {
+        val dm = base.getSystemService(android.hardware.display.DisplayManager::class.java)
+        base.createDisplayContext(dm.getDisplay(android.view.Display.DEFAULT_DISPLAY))
+            .createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
+    } catch (_: Exception) { base } else base
     private val wm = ctx.getSystemService(WindowManager::class.java)
     private var root: LinearLayout? = null
     private var lp: WindowManager.LayoutParams? = null
@@ -40,9 +46,11 @@ class BubbleOverlay(private val ctx: Context) {
     private fun dp(v: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, ctx.resources.displayMetrics)
     private fun dpi(v: Int) = dp(v.toFloat()).toInt()
 
-    private fun shouldShow(): Boolean =
-        LiveHub.active && !LiveHub.appVisible && !LiveHub.bubbleDismissed &&
-            LiveHub.bubbleOn(ctx) && Settings.canDrawOverlays(ctx)
+    private fun shouldShow(): Boolean {
+        if (!Settings.canDrawOverlays(ctx)) return false
+        if (System.currentTimeMillis() < LiveHub.previewUntil) return true
+        return LiveHub.active && !LiveHub.appVisible && !LiveHub.bubbleDismissed && LiveHub.bubbleOn(ctx)
+    }
 
     fun update() {
         if (!shouldShow()) { remove(); return }
@@ -53,6 +61,7 @@ class BubbleOverlay(private val ctx: Context) {
     fun remove() {
         root?.let { try { wm.removeView(it) } catch (_: Exception) { } }
         root = null
+        LiveHub.bubbleShown = false
     }
 
     private fun tv(sp: Float, color: Int, bold: Boolean = false) = TextView(ctx).apply {
@@ -131,7 +140,8 @@ class BubbleOverlay(private val ctx: Context) {
         compact.setOnTouchListener(touch); card.setOnTouchListener(touch)
         eHr.setOnTouchListener(touch); eBar.setOnTouchListener(touch); eL1.setOnTouchListener(touch); eL2.setOnTouchListener(touch); eZone.setOnTouchListener(touch)
 
-        try { wm.addView(r, p); root = r; lp = p } catch (_: Exception) { root = null }
+        try { wm.addView(r, p); root = r; lp = p; LiveHub.bubbleShown = true }
+        catch (e: Exception) { root = null; LiveHub.err("exibir bolha", e) }
     }
 
     /** Ao soltar, encosta na borda mais próxima. */

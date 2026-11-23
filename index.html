@@ -324,6 +324,8 @@
     <div id="bubbleCfg" class="hidden" style="margin-top:12px">
       <label class="chk"><input type="checkbox" id="bubbleOn"> Telinha flutuante sobre outros apps durante o treino</label>
       <p id="bubbleMsg" class="msg"></p>
+      <div class="row"><button id="bubbleTest">Testar telinha (15 s)</button></div>
+      <p id="bubbleDiag" class="msg"></p>
     </div>
     <div class="row" style="align-items:center;gap:10px;margin-top:8px">
       <label for="zmode">Base das zonas</label>
@@ -2384,6 +2386,11 @@
         renderBubbleCfg();
       };
       document.addEventListener('visibilitychange', () => { if (!document.hidden) renderBubbleCfg(); });
+      $('bubbleTest').onclick = () => {
+        if (!NATIVE.bubbleTest) return;
+        NATIVE.bubbleTest();
+        let n = 0; const iv = setInterval(() => { renderBubbleCfg(); if (++n > 16) clearInterval(iv); }, 1000);
+      };
     }
     $('hcwAll').onclick = hcWriteAllOld;
     NATIVE.hcStatus();
@@ -2920,6 +2927,7 @@
     $('bubbleOn').checked = !!(st.on && st.perm);
     $('bubbleMsg').textContent = !st.perm ? 'Falta a permissão "Sobrepor a outros apps": marque a opção para abrir a tela de permissão.'
       : st.on ? 'Aparece só com treino ativo e só quando o Monitor H10 não está na tela. Toque para expandir, arraste para mover.' : 'Desligada.';
+    $('bubbleDiag').textContent = `Permissão: ${st.perm ? 'sim' : 'não'} · serviço: ${st.svc ? 'rodando' : 'parado'} · treino ativo: ${st.active ? 'sim' : 'não'} · bolha na tela: ${st.shown ? 'sim' : 'não'}` + (st.err ? ` · última falha: ${st.err}` : '');
   }
 
   let liveTick = 0;
@@ -3099,7 +3107,7 @@
   renderHistory();
 
   // ---------- app instalável (PWA) ----------
-  const APP_VERSION = '2026-11-23.2';
+  const APP_VERSION = '2026-11-23.3';
   $('appVer').textContent = APP_VERSION + (NATIVE ? ' · app Android ' + NATIVE.version() : '');
   nativeInit();
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

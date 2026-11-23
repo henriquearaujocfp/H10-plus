@@ -345,7 +345,18 @@ class H10Bridge(private val act: MainActivity, private val web: WebView) {
     @JavascriptInterface
     fun overlayStatus(): String = JSONObject()
         .put("perm", android.provider.Settings.canDrawOverlays(act))
-        .put("on", LiveHub.bubbleOn(act)).toString()
+        .put("on", LiveHub.bubbleOn(act))
+        .put("svc", LiveHub.serviceRunning).put("active", LiveHub.active).put("shown", LiveHub.bubbleShown)
+        .put("err", LiveHub.lastErr ?: "").toString()
+
+    /** Mostra a bolha por 15 s (mesmo com o app na tela) para conferir se o sistema deixa sobrepor. */
+    @JavascriptInterface
+    fun bubbleTest() = main.post {
+        LiveHub.lastErr = null
+        LiveHub.previewUntil = System.currentTimeMillis() + 15000
+        LiveHub.bubbleDismissed = false
+        if (!LiveHub.serviceRunning) LiveHub.startService(act.applicationContext)
+    }
 
     @JavascriptInterface
     fun setBubble(on: Boolean) { LiveHub.setBubble(act, on); if (on) LiveHub.bubbleDismissed = false }

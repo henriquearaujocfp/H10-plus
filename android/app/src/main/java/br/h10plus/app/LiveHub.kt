@@ -23,6 +23,10 @@ object LiveHub {
     @Volatile var appVisible = false
     @Volatile var serviceRunning = false
     @Volatile var bubbleDismissed = false
+    @Volatile var bubbleShown = false
+    @Volatile var previewUntil = 0L          // "Testar telinha": mostra por alguns segundos mesmo sem treino
+    @Volatile var lastErr: String? = null
+    fun err(where: String, e: Throwable) { lastErr = "$where: ${e.javaClass.simpleName} ${e.message ?: ""}".take(200) }
 
     fun prefs(ctx: Context) = ctx.getSharedPreferences("h10live", Context.MODE_PRIVATE)
     fun bubbleOn(ctx: Context) = prefs(ctx).getBoolean("bubble", true)
@@ -47,13 +51,17 @@ object LiveHub {
         if (on) {
             if (!active) bubbleDismissed = false
             s = o; active = true
-            if (!serviceRunning) try {
-                ContextCompat.startForegroundService(ctx, Intent(ctx, WorkoutFgService::class.java))
-            } catch (_: Exception) { }
+            if (!serviceRunning) startService(ctx)
         } else if (active) {
             active = false
+            if (System.currentTimeMillis() < previewUntil) return
             try { ctx.stopService(Intent(ctx, WorkoutFgService::class.java)) } catch (_: Exception) { }
         }
+    }
+
+    fun startService(ctx: Context) {
+        try { ContextCompat.startForegroundService(ctx, Intent(ctx, WorkoutFgService::class.java)) }
+        catch (e: Exception) { err("iniciar serviço", e) }
     }
 
     fun fmtClock(sec: Long): String {

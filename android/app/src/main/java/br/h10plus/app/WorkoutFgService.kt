@@ -36,9 +36,9 @@ class WorkoutFgService : Service() {
     private lateinit var bubble: BubbleOverlay
     private val loop = object : Runnable {
         override fun run() {
-            if (!LiveHub.active) { stopSelf(); return }
-            bubble.update()
-            if (tick++ % 2 == 0) try { getSystemService(NotificationManager::class.java).notify(NID, build()) } catch (_: Exception) { }
+            if (!LiveHub.active && System.currentTimeMillis() > LiveHub.previewUntil) { stopSelf(); return }
+            try { bubble.update() } catch (e: Exception) { LiveHub.err("bolha", e) }
+            if (tick++ % 2 == 0) try { getSystemService(NotificationManager::class.java).notify(NID, build()) } catch (e: Exception) { LiveHub.err("notificação", e) }
             ui.postDelayed(this, 1000)
         }
     }
@@ -57,12 +57,16 @@ class WorkoutFgService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val n = build()
+        val n = try { build() } catch (e: Exception) {
+            LiveHub.err("montar notificação", e)
+            NotificationCompat.Builder(this, CH).setSmallIcon(R.drawable.ic_stat_heart).setContentTitle("Treino ativo").setOngoing(true).build()
+        }
         try {
             ServiceCompat.startForeground(this, NID, n, if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE else 0)
-        } catch (_: Exception) {
+        } catch (e1: Exception) {
+            LiveHub.err("primeiro plano (BLE)", e1)
             try { ServiceCompat.startForeground(this, NID, n, if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0) }
-            catch (_: Exception) { stopSelf(); return START_NOT_STICKY }
+            catch (e2: Exception) { LiveHub.err("primeiro plano", e2); stopSelf(); return START_NOT_STICKY }
         }
         if (intent?.action == ACTION_TOGGLE_BUBBLE) {
             val on = !LiveHub.bubbleOn(this)
