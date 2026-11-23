@@ -2386,6 +2386,7 @@
         renderBubbleCfg();
       };
       document.addEventListener('visibilitychange', () => { if (!document.hidden) renderBubbleCfg(); });
+      setInterval(() => { if (!document.hidden && !$('bubbleCfg').closest('.hidden')) renderBubbleCfg(); }, 2000);
       $('bubbleTest').onclick = () => {
         if (!NATIVE.bubbleTest) return;
         NATIVE.bubbleTest();
@@ -2909,7 +2910,9 @@
 
   // ---------- notificação fixa e bolha (Android) ----------
   let liveN = 0;
-  function pushLive(){
+  let liveSent = 0, liveErr = '';
+  function pushLive(){ try { if (pushLive0()) liveSent++; } catch (e) { liveErr = String(e && e.message || e).slice(0, 120); } }
+  function pushLive0(){
     if (!NATIVE || !NATIVE.liveState || !wk) return;
     const wl = typeof wearLive !== 'undefined' && wearLive && Date.now() - wearLive.at < 8000 ? wearLive : null;
     const own = device && Date.now() - lastReadingT < 5000 ? lastHR : 0;
@@ -2919,6 +2922,7 @@
       dist: wl && wl.gps ? wl.dist || 0 : 0, spd: wl && wl.pace > 0 && wl.pace < 1800 ? 3600 / wl.pace : 0,
       test: test && test.guide ? test.guide : null
     }));
+    return true;
   }
   function renderBubbleCfg(){
     if (!NATIVE || !NATIVE.overlayStatus) return;
@@ -2927,7 +2931,7 @@
     $('bubbleOn').checked = !!(st.on && st.perm);
     $('bubbleMsg').textContent = !st.perm ? 'Falta a permissão "Sobrepor a outros apps": marque a opção para abrir a tela de permissão.'
       : st.on ? 'Aparece só com treino ativo e só quando o Monitor H10 não está na tela. Toque para expandir, arraste para mover.' : 'Desligada.';
-    $('bubbleDiag').textContent = `Permissão: ${st.perm ? 'sim' : 'não'} · serviço: ${st.svc ? 'rodando' : 'parado'} · treino ativo: ${st.active ? 'sim' : 'não'} · bolha na tela: ${st.shown ? 'sim' : 'não'}` + (st.err ? ` · última falha: ${st.err}` : '');
+    $('bubbleDiag').textContent = `Permissão: ${st.perm ? 'sim' : 'não'} · serviço: ${st.svc ? 'rodando' : 'parado'} · treino ativo: ${st.active ? 'sim' : 'não'} · bolha na tela: ${st.shown ? 'sim' : 'não'}` + (st.bg ? ` · fora do app: ${st.bg}` : '') + ` · envios do treino: ${liveSent}` + (liveErr ? ` · erro no envio: ${liveErr}` : '') + (st.err ? ` · última falha: ${st.err}` : '');
   }
 
   let liveTick = 0;
@@ -3107,7 +3111,7 @@
   renderHistory();
 
   // ---------- app instalável (PWA) ----------
-  const APP_VERSION = '2026-11-23.3';
+  const APP_VERSION = '2026-11-23.4';
   $('appVer').textContent = APP_VERSION + (NATIVE ? ' · app Android ' + NATIVE.version() : '');
   nativeInit();
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

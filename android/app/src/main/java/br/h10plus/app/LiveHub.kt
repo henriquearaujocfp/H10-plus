@@ -26,6 +26,7 @@ object LiveHub {
     @Volatile var bubbleShown = false
     @Volatile var previewUntil = 0L          // "Testar telinha": mostra por alguns segundos mesmo sem treino
     @Volatile var lastErr: String? = null
+    @Volatile var bgReason = ""             // último estado avaliado com o app fora da tela
     fun err(where: String, e: Throwable) { lastErr = "$where: ${e.javaClass.simpleName} ${e.message ?: ""}".take(200) }
 
     fun prefs(ctx: Context) = ctx.getSharedPreferences("h10live", Context.MODE_PRIVATE)

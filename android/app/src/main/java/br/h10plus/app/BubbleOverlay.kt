@@ -47,9 +47,17 @@ class BubbleOverlay(base: Context) {
     private fun dpi(v: Int) = dp(v.toFloat()).toInt()
 
     private fun shouldShow(): Boolean {
-        if (!Settings.canDrawOverlays(ctx)) return false
-        if (System.currentTimeMillis() < LiveHub.previewUntil) return true
-        return LiveHub.active && !LiveHub.appVisible && !LiveHub.bubbleDismissed && LiveHub.bubbleOn(ctx)
+        val why = when {
+            !Settings.canDrawOverlays(ctx) -> "sem permissão"
+            System.currentTimeMillis() < LiveHub.previewUntil -> null
+            !LiveHub.active -> "sem treino ativo"
+            LiveHub.appVisible -> "app na tela"
+            LiveHub.bubbleDismissed -> "fechada no ✕"
+            !LiveHub.bubbleOn(ctx) -> "desligada"
+            else -> null
+        }
+        if (why != "app na tela") LiveHub.bgReason = why ?: "exibindo"
+        return why == null
     }
 
     fun update() {
