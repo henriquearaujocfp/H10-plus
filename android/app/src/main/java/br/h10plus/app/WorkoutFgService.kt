@@ -69,7 +69,8 @@ class WorkoutFgService : Service() {
             catch (e2: Exception) { LiveHub.err("primeiro plano", e2); stopSelf(); return START_NOT_STICKY }
         }
         if (intent?.action == ACTION_TOGGLE_BUBBLE) {
-            val on = !LiveHub.bubbleOn(this)
+            // estado explícito no botão (evita inverter com um botão de notificação desatualizado)
+            val on = intent.getBooleanExtra("on", !LiveHub.bubbleOn(this))
             LiveHub.setBubble(this, on)
             if (on) LiveHub.bubbleDismissed = false
             bubble.update()
@@ -90,6 +91,7 @@ class WorkoutFgService : Service() {
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
     private fun build(): Notification {
+        val bubbleNow = Settings.canDrawOverlays(this) && LiveHub.bubbleOn(this)
         val s = LiveHub.s
         val now = System.currentTimeMillis()
         val hr = LiveHub.hr(now)
@@ -150,10 +152,10 @@ class WorkoutFgService : Service() {
         val open = pi(20, Intent(this, MainActivity::class.java))
         val focus = pi(21, Intent(Intent.ACTION_VIEW, Uri.parse("h10plus://treino?acao=foco"), this, MainActivity::class.java))
         val bubbleAction = if (Settings.canDrawOverlays(this))
-            PendingIntent.getService(this, 22, Intent(this, WorkoutFgService::class.java).setAction(ACTION_TOGGLE_BUBBLE),
+            PendingIntent.getService(this, 22, Intent(this, WorkoutFgService::class.java).setAction(ACTION_TOGGLE_BUBBLE).putExtra("on", !bubbleNow),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         else pi(23, Intent(Intent.ACTION_VIEW, Uri.parse("h10plus://treino?acao=bolha"), this, MainActivity::class.java))
-        val bubbleLbl = if (Settings.canDrawOverlays(this) && LiveHub.bubbleOn(this)) "Bolha: desligar" else "Bolha: ligar"
+        val bubbleLbl = if (bubbleNow) "Bolha: desligar" else "Bolha: ligar"
 
         return NotificationCompat.Builder(this, CH)
             .setSmallIcon(R.drawable.ic_stat_heart)
