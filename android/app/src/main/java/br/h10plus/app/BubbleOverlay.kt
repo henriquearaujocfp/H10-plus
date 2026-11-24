@@ -171,7 +171,8 @@ class BubbleOverlay(base: Context) {
         val el = LiveHub.fmtClock((now - s.optLong("start", now)) / 1000)
         val test = s.optJSONObject("test")
         val left = test?.optDouble("left", 0.0) ?: 0.0
-        val alert = test != null && left <= 5.5 && !(test.optBoolean("vt2") && !test.optBoolean("max"))
+        val warn = s.optString("warn", "")
+        val alert = (test != null && left <= 5.5 && !(test.optBoolean("vt2") && !test.optBoolean("max"))) || (test == null && warn.isNotEmpty())
 
         // compacta
         val bg = when { alert -> 0xFFF2C230.toInt(); z >= 0 -> LiveHub.ZONE[z]; else -> 0xFF30343B.toInt() }
@@ -180,6 +181,7 @@ class BubbleOverlay(base: Context) {
         cHr.setTextColor(fg); cSub.setTextColor(fg)
         cHr.text = if (hr > 0) hr.toString() else "--"
         cSub.text = when {
+            alert && test == null -> warn.replace(" da ", "\nda ")
             alert -> "→ ${test!!.optString("next")}\nem ${kotlin.math.ceil(left).toInt()} s"
             test != null -> "${test.optString("load")}\n${LiveHub.fmtClock(left.toLong())}"
             else -> (if (z >= 0) "Z${z + 1}" else "--") + "\n" + el

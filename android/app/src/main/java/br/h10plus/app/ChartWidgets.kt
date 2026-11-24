@@ -92,8 +92,8 @@ class WeekWidget : ChartWidgetBase() {
             val today = LocalDate.now(zone)
             val monday = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
             fun day(d: LocalDate): DoubleArray {
-                val a = cardio.optJSONArray(d.toString()) ?: return DoubleArray(6)
-                return DoubleArray(6) { a.optDouble(it, 0.0) }
+                val a = cardio.optJSONArray(d.toString()) ?: return DoubleArray(7)
+                return DoubleArray(7) { a.optDouble(it, 0.0) }
             }
             val week = (0 until 7).map { day(monday.plusDays(it.toLong())) }
             // média diária de minutos nas 4 semanas anteriores (28 dias antes da segunda)
@@ -102,7 +102,10 @@ class WeekWidget : ChartWidgetBase() {
             val avg = prevMin / 28.0
             val trimp = week.sumOf { it[5] }
             val nDays = week.count { it.take(5).sum() >= 1 }
-            val sub = "${dm(monday)}–${dm(monday.plusDays(6))} · TRIMP ${trimp.roundToInt()} · $nDays de 7 dias"
+            val z2 = week.sumOf { it[1] }.roundToInt()
+            val goal = s.optInt("z2goal", 0)
+            val vo2 = week.any { it[6] >= 1 }
+            val sub = "$nDays/7 dias · Z2 $z2" + (if (goal > 0) "/$goal" else "") + " min · 4×4 " + (if (vo2) "✓" else "—") + " · TRIMP ${trimp.roundToInt()}"
 
             for (id in ids) {
                 val (w, h) = chartSize(ctx, mgr, id)

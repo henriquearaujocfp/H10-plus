@@ -38,6 +38,8 @@ object WorkoutState {
     @Volatile var testEndMs = 0L       // fim da etapa atual (relógio do relógio)
     @Volatile var testHold = false     // VT2 atingido em teste submáximo: não anuncia próxima etapa
     fun testActive(now: Long) = testAt > 0 && now - testAt < 6000
+    @Volatile var warn = ""            // aviso do celular (ex.: acima da zona 2)
+    @Volatile var warnAt = 0L
 
     /** FC a mostrar: a da cinta conectada ao relógio; se estiver sem dados, a enviada pelo celular. */
     fun displayHr(now: Long): Int = when {

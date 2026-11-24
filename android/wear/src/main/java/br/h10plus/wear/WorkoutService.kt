@@ -96,6 +96,7 @@ class WorkoutService : Service() {
             val now = System.currentTimeMillis()
             val h = o.optInt("hr", 0)
             if (h > 0) { WorkoutState.remoteHr = h; WorkoutState.remoteHrMs = now }
+            if (o.has("warn")) { WorkoutState.warn = o.optString("warn"); WorkoutState.warnAt = now }
             o.optJSONObject("test")?.let { t ->
                 WorkoutState.testPhase = t.optString("ph")
                 WorkoutState.testLoad = t.optString("load")

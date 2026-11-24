@@ -380,6 +380,7 @@ class WearActivity : ComponentActivity() {
 
     private var shownTestIdx = -1
     private var alertedIdx = -1
+    private var shownWarn = ""
 
     private fun render() {
         val st = WorkoutState
@@ -453,7 +454,17 @@ class WearActivity : ComponentActivity() {
                     } else {
                         tvBottom.text = st.testLoad
                     }
-                } else { shownTestIdx = -1; alertedIdx = -1 }
+                } else {
+                    shownTestIdx = -1; alertedIdx = -1
+                    val w = if (now - st.warnAt < 6000) st.warn else ""
+                    if (w.isNotEmpty()) {
+                        if (w != shownWarn) vibrate(300)
+                        tvBottom.text = w
+                        tvBottom.background = GradientDrawable().apply { cornerRadius = dp(12).toFloat(); setColor(0xF0000000.toInt()) }
+                        tvBottom.setTextColor(0xFFF2C230.toInt())
+                    }
+                    shownWarn = w
+                }
                 val panel = SystemClock.uptimeMillis() < touchFallbackUntil || ring.holdProgress > 0f
                 tvHint.visibility = View.GONE
                 if (SystemClock.uptimeMillis() < lockToastUntil && !panel) tvBottom.text = "🔒 Voltar para encerrar"

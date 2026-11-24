@@ -115,7 +115,8 @@ class WorkoutFgService : Service() {
                 v.setTextColor(R.id.nZone, 0xFF8A8F98.toInt())
             }
             v.setChronometer(R.id.nChrono, chronoBase, null, true)
-            v.setTextViewText(R.id.nType, if (test != null) "Teste guiado" else type)
+            v.setTextViewText(R.id.nType, if (test != null) (if (test.has("warm")) "Teste guiado" else "4×4") else type)
+            val warn = s.optString("warn", "")
             if (test != null) {
                 val left = test.optDouble("left", 0.0)
                 v.setTextViewText(R.id.nRight, "${test.optString("ph")} · ${test.optString("load")}")
@@ -126,11 +127,11 @@ class WorkoutFgService : Service() {
                     v.setTextViewText(R.id.nTestLoad, test.optString("load"))
                     v.setTextViewText(R.id.nTestLeft, "faltam ${LiveHub.fmtClock(left.toLong())}")
                     v.setTextViewText(R.id.nTestNext, if (test.optBoolean("vt2") && !test.optBoolean("max")) "VT2 atingido: pode concluir" else "Próxima: ${test.optString("next")}")
-                    val stage = if (test.optInt("idx") == 0) test.optDouble("warm", 300.0) else test.optDouble("stage", 180.0)
+                    val stage = test.optDouble("len", if (test.optInt("idx") == 0) test.optDouble("warm", 300.0) else test.optDouble("stage", 180.0))
                     v.setProgressBar(R.id.nTestProg, 1000, ((1 - left / stage).coerceIn(0.0, 1.0) * 1000).toInt(), false)
                 }
             } else {
-                v.setTextViewText(R.id.nRight, gpsTxt)
+                v.setTextViewText(R.id.nRight, if (warn.isNotEmpty()) warn else gpsTxt)
                 if (big) {
                     v.setViewVisibility(R.id.nTest, View.GONE)
                     v.setViewVisibility(R.id.nStats, View.VISIBLE)

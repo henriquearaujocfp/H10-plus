@@ -94,6 +94,9 @@
   .chk{display:flex;align-items:center;gap:8px;margin:6px 0 0;font-size:14px;color:var(--txt)}
   .chk input{width:20px;height:20px}
   .typeSeg button{padding:10px 6px;font-size:14px;font-weight:600}
+  .goalSeg{margin-top:8px}
+  .goalSeg button{padding:8px 6px;font-size:13px}
+  .goalSeg.hidden{display:none}
   .wkhead{display:flex;justify-content:space-between;align-items:baseline;font-size:15px;color:var(--mut)}
   #wkClock{font-size:34px;font-weight:700;color:var(--txt);font-variant-numeric:tabular-nums}
   .holdEnd{position:relative;overflow:hidden;background:#3a1d20;border-color:var(--z5);color:#fff;user-select:none;-webkit-user-select:none;touch-action:none;-webkit-touch-callout:none}
@@ -181,6 +184,12 @@
         <button data-t="in" class="sel">Cardio indoor</button>
         <button data-t="out">Cardio outdoor</button>
       </div>
+      <div class="seg goalSeg">
+        <button data-g="livre" class="sel">Livre</button>
+        <button data-g="z2">Zona 2</button>
+        <button data-g="4x4">4×4 VO2máx</button>
+      </div>
+      <p class="msg goalMsg"></p>
       <label class="chk"><input type="checkbox" class="fastedChk"> Em jejum (8 h ou mais sem comer)</label>
       <button id="btnStart" class="primary big">▶ Iniciar treino</button>
     </div>
@@ -191,6 +200,13 @@
         <div class="stat"><b id="max">--</b><span>FC máx</span></div>
         <div class="stat"><b id="wkTrimp">--</b><span>TRIMP</span></div>
       </div>
+      <div id="ivBox" class="hidden">
+        <div class="wkhead"><span id="ivPh">--</span><span id="ivLeft">--</span></div>
+        <div id="ivTarget" style="text-align:center;font-size:22px;font-weight:800;margin:4px 0">--</div>
+        <div id="ivBar" style="height:8px;background:#21262d;border-radius:4px;overflow:hidden"><div style="height:100%;width:0;background:#58a6ff"></div></div>
+        <p id="ivNext" class="msg" style="text-align:center"></p>
+      </div>
+      <p id="a1Line" class="status-line" style="text-align:center"></p>
       <p id="wkWatch" class="status-line" style="text-align:center"></p>
       <div id="zones"></div>
       <button class="holdEnd big"><span class="fill"></span><span class="lbl">■ Segure 5 s para encerrar</span></button>
@@ -321,6 +337,9 @@
       <label for="idade">Idade</label>
       <input id="idade" type="number" min="15" max="90" value="41">
     </div>
+    <div class="row" style="align-items:center;gap:10px;margin-top:12px"><label for="z2goal">Meta semanal de zona 2 (min)</label><input id="z2goal" type="number" min="0" max="900" step="10" value="180"></div>
+    <p class="msg">Usada no widget "Cardio da semana". O <i>Outlive</i> fala em cerca de 3 h por semana de zona 2.</p>
+    <p id="fcrepSrc" class="msg"></p>
     <div id="bubbleCfg" class="hidden" style="margin-top:12px">
       <label class="chk"><input type="checkbox" id="bubbleOn"> Telinha flutuante sobre outros apps durante o treino</label>
       <p id="bubbleMsg" class="msg"></p>
@@ -446,6 +465,7 @@
   <div id="fZone">--</div>
   <div id="fBar"></div>
   <div id="fSub">--</div>
+  <div id="fGuide" style="font-size:min(5vw,3vh);font-weight:700;margin-top:1vh;text-align:center"></div>
   <div id="fWarn"></div>
   <div id="fCtl">
     <div id="fIdle">
@@ -453,6 +473,11 @@
         <button data-t="forca">Musculação</button>
         <button data-t="in" class="sel">Cardio indoor</button>
         <button data-t="out">Cardio outdoor</button>
+      </div>
+      <div class="seg goalSeg">
+        <button data-g="livre" class="sel">Livre</button>
+        <button data-g="z2">Zona 2</button>
+        <button data-g="4x4">4×4 VO2máx</button>
       </div>
       <label class="chk"><input type="checkbox" class="fastedChk"> Em jejum</label>
       <button id="fStart" class="primary big">▶ Iniciar treino</button>
@@ -513,7 +538,7 @@
   let rrBuf = [];                // {t, rr} últimos 60 s
   let lastRR = null;
   let windowSec = 300;
-  let wk = null, hrrCap = null, lastRaw = null, selType = 'cardio', selEnv = 'indoor';
+  let wk = null, hrrCap = null, lastRaw = null, selType = 'cardio', selEnv = 'indoor', selGoal = 'livre';
 
   const store = {
     get(k, d){ try{ const v = localStorage.getItem(k); return v === null ? d : v; }catch(e){ return d; } },
@@ -522,6 +547,8 @@
   $('fcmax').value = store.get('fcmax', '179');
   $('fcrep').value = store.get('fcrep', '60');
   selEnv = store.get('cEnv', 'indoor');
+  $('z2goal').value = store.get('z2goal', '180');
+  $('z2goal').addEventListener('change', () => { store.set('z2goal', $('z2goal').value); pushWidget(); });
   const fcmax = () => Math.max(100, +$('fcmax').value || 179);
   $('fcmax').addEventListener('change', () => { store.set('fcmax', $('fcmax').value); renderZones(); draw(); if (typeof renderZInfo === 'function') renderZInfo(); if (typeof pushWearConfig === 'function') pushWearConfig(); });
   $('fcrep').addEventListener('change', () => store.set('fcrep', $('fcrep').value));
@@ -927,8 +954,19 @@
     else selType = t === 'forca' ? 'forca' : 'cardio';
     const key = selType === 'forca' ? 'forca' : selEnv === 'indoor' ? 'in' : 'out';
     document.querySelectorAll('.typeSeg button').forEach(b => b.classList.toggle('sel', b.dataset.t === key));
+    showGoal();
   }
-  const tLbl = o => !o ? 'Treino' : o.type === 'forca' ? 'Musculação' : o.env === 'indoor' ? 'Cardio indoor' : o.env === 'outdoor' ? 'Cardio outdoor' : 'Cardio';
+  function setGoal(g){
+    selGoal = g; store.set('cGoal', g);
+    document.querySelectorAll('.goalSeg button').forEach(b => b.classList.toggle('sel', b.dataset.g === g));
+    const fm = fcmax();
+    const msg = g === 'z2' ? `Zona 2: o app acompanha o DFA α1 (precisa da cinta conectada ao celular) e avisa por voz quando passar do 1º limiar (α1 < 0,75 por 1 min). Sem α1, usa o topo da Z2 (${curZB()[2] - 1} bpm).`
+      : g === '4x4' ? `4×4: 10 min de aquecimento, 4 tiros de 4 min a ${Math.round(fm * 0.9)}–${Math.round(fm * 0.95)} bpm (90–95% da FCmáx ${fm}) com 3 min de recuperação ativa, e 5 min de desaquecimento. Voz e relógio avisam cada troca 5 s antes.` : '';
+    document.querySelectorAll('.goalMsg').forEach(m => m.textContent = msg);
+  }
+  const showGoal = () => document.querySelectorAll('.goalSeg').forEach(g => g.classList.toggle('hidden', selType !== 'cardio'));
+  const tLbl0 = o => !o ? 'Treino' : o.type === 'forca' ? 'Musculação' : o.env === 'indoor' ? 'Cardio indoor' : o.env === 'outdoor' ? 'Cardio outdoor' : 'Cardio';
+  const tLbl = o => tLbl0(o) + (o && o.goal === 'z2' ? ' · Zona 2' : o && o.goal === '4x4' ? ' · 4×4' : '');
   function setFasted(v){ document.querySelectorAll('.fastedChk').forEach(c => c.checked = v); }
 
   // opts.remote = iniciado pelo relógio (mesmo sid e mesmo instante de início)
@@ -940,7 +978,10 @@
     if (o.remote) setType(o.tipo === 'forca' ? 'forca' : o.amb === 'in' || o.amb === 'out' ? o.amb : 'cardio');
     const fasted = !!document.querySelector('.fastedChk').checked;
     const sid = o.sid || ('w' + start);
-    wk = {id: 'w' + start, sid, type: selType, env: selType === 'cardio' ? selEnv : undefined, fasted, start, samples: [], rows: [], ecg: [],
+    const goal = opts && opts.goal ? opts.goal : selType === 'cardio' && !(o && o.remote) ? selGoal : 'livre';
+    wk = {id: 'w' + start, sid, type: selType, env: selType === 'cardio' ? selEnv : undefined, goal, fasted, start,
+          rrw: [], a1pts: [], a1now: null, z2: {over: false, lastSay: 0, low0: 0, hi0: 0}, warn: '',
+          iv: goal === '4x4' ? ivPlan(fcmax()) : null, samples: [], rows: [], ecg: [],
           zoneSec: [0,0,0,0,0], lastT: 0, sum: 0, n: 0, max: 0, trimp: 0, cfg: cfgSnap()};
     if (!o.remote && NATIVE && NATIVE.wearCmd) NATIVE.wearCmd('start', JSON.stringify({sid, t: start, tipo: selType, amb: selType === 'cardio' ? (selEnv === 'indoor' ? 'in' : 'out') : 'in'}));
     hrrCap = null;
@@ -956,6 +997,7 @@
     wk.samples.push([t, hr]);
     wk.rows.push([new Date(t).toISOString(), hr, rr.map(v => v.toFixed(1)).join(';'), contact === null ? '' : (contact ? 1 : 0)]);
     wk.sum += hr; wk.n++; wk.max = Math.max(wk.max, hr);
+    if (wk.type === 'cardio') { wk.rrw = wk.rrw || []; for (const v of rr) wk.rrw.push([t, v]); if (wk.rrw.length > 600) wk.rrw = wk.rrw.filter(r => r[0] >= t - 130000); }
     const z = zoneIndex(hr);
     if (z >= 0) wk.zoneSec[z] += dt;
     const x = Math.min(1, Math.max(0, (hr - wk.cfg.fcrep) / (wk.cfg.fcmax - wk.cfg.fcrep)));
@@ -1025,7 +1067,8 @@
     // zonas/FCmáx vigentes ao encerrar (um teste no meio do treino pode tê-las atualizado)
     const now = cfgSnap();
     const cfg = {...wk.cfg, fcmax: now.fcmax, zb: now.zb, vt1: now.vt1, vt2: now.vt2};
-    const w = {id: wk.id, sid: wk.sid, type: wk.type, env: wk.env, fasted: wk.fasted, start: wk.start, end, cfg,
+    const w = {id: wk.id, sid: wk.sid, type: wk.type, env: wk.env, goal: wk.goal, fasted: wk.fasted, start: wk.start, end, cfg,
+               a1: wk.a1pts.length ? wk.a1pts : undefined, iv: wk.iv ? {res: wk.iv.res, lo: wk.iv.lo, hi: wk.iv.hi, done: wk.iv.res.filter(r => r.sec >= 200).length} : undefined,
                hr: toHr1s(wk.samples, wk.start, end), hrr: null};
     workouts.push(w); saveWorkouts();
     lastRaw = {id: w.id, rows: wk.rows, ecg: wk.ecg};
@@ -1042,6 +1085,15 @@
   }
 
   // ---------- cardio indoor: distância e inclinação informadas no fim ----------
+  // maior FC sustentada por 5 s (mínimo da janela de 5 s), se passar da FCmáx configurada
+  function fmObs(w){
+    const h = w.hr || []; let best = 0;
+    for (let i = 4; i < h.length; i++) {
+      let m = Infinity; for (let k = i - 4; k <= i; k++) m = Math.min(m, h[k] || 0);
+      if (m > best) best = m;
+    }
+    return best > fcmax() && best < 230 ? best : 0;
+  }
   function indoorCalc(w){
     const i = w.indoor; if (!i || !(i.dist > 0)) return null;
     const durMin = (w.end - w.start) / 60000;
@@ -1266,6 +1318,19 @@
       ${w.source === 'cinta' ? '<p class="msg">Importado da memória da cinta (intervalos RR batimento a batimento). Sem recuperação da FC medida.</p>' : ''}
       ${w.source === 'relogio' ? '<p class="msg">Gravado no Galaxy Watch com o H10.</p>' : ''}
       ${w.source === 'celular+relogio' ? '<p class="msg">Gravado no celular e no Galaxy Watch ao mesmo tempo (percurso e recuperação vindos do relógio).</p>' : ''}
+      ${fmObs(w) ? `<section class="card" style="border-color:#f2c230"><h2>FC máxima observada</h2>
+        <p class="msg">Neste treino a FC ficou em <b>${fmObs(w)} bpm</b> por pelo menos 5 s seguidos, acima da FCmáx configurada (${fcmax()} bpm). Picos isolados de 1–2 s não contam, para não confundir artefato com dado.</p>
+        <button id="evalFm" class="primary">Atualizar FCmáx para ${fmObs(w)}</button></section>` : ''}
+      ${w.iv && w.iv.res ? `<section class="card"><h2>4×4 VO2máx</h2>
+        <table><tr><th>Tiro</th><th>No alvo</th><th>Média</th><th>Máx</th></tr>${w.iv.res.filter(Boolean).map(r => `<tr><td>${r.n}</td><td>${fmtDur(r.inT)} (${r.sec ? Math.round(r.inT / r.sec * 100) : 0}%)</td><td>${r.cnt ? Math.round(r.sum / r.cnt) : '--'}</td><td>${r.max || '--'}</td></tr>`).join('')}</table>
+        <p class="msg">Alvo ${w.iv.lo}–${w.iv.hi} bpm (90–95% da FCmáx). Tiros completos: ${w.iv.done} de 4. A FC sobe com atraso de 1–2 min no início de cada tiro, então "no alvo" abaixo de ~60% é esperado no 1º tiro.</p></section>` : ''}
+      ${w.a1 && w.a1.length >= 6 ? (() => {
+        const n = w.a1.length, ab = w.a1.filter(p => p[1] >= 0.75).length, mid = w.a1.filter(p => p[1] < 0.75 && p[1] >= 0.5).length;
+        return `<section class="card"><h2>DFA α1 no treino</h2>
+        <div class="grid"><div class="stat"><b>${Math.round(ab / n * 100)}%</b><span>abaixo do 1º limiar (α1 ≥ 0,75)</span></div>
+        <div class="stat"><b>${Math.round(mid / n * 100)}%</b><span>entre os limiares</span></div>
+        <div class="stat"><b>${Math.round((n - ab - mid) / n * 100)}%</b><span>acima do 2º limiar (α1 &lt; 0,5)</span></div></div>
+        <p class="msg">Pontos a cada 10 s com janela de 2 min, só com menos de 5% de artefato (${n} pontos válidos). ${w.goal === 'z2' ? 'Sessão de zona 2: a meta é ficar quase todo o tempo com α1 ≥ 0,75.' : ''} O α1 foi validado contra o limiar ventilatório (VT1 ≈ 0,75); a correspondência com o seu lactato não foi medida.</p></section>`; })() : ''}
       ${w.type === 'cardio' && w.env === 'indoor' ? (a.ind ? `<section class="card"><h2>Esteira</h2>
         <div class="grid">
           <div class="stat"><b>${(w.indoor.dist / 1000).toFixed(2).replace('.', ',')} km</b><span>Distância</span></div>
@@ -1333,6 +1398,10 @@
     requestAnimationFrame(() => drawEvalChart(w));
     $('evalCsv').onclick = () => exportWorkoutCSV(w);
     if ($('evalIndoor')) $('evalIndoor').onclick = () => openIndoor(w.id, false);
+    if ($('evalFm')) $('evalFm').onclick = () => {
+      $('fcmax').value = fmObs(w); $('fcmax').dispatchEvent(new Event('change'));
+      openEval(w.id);
+    };
     $('evalDel').onclick = e => {
       const b = e.currentTarget;
       if (b.dataset.armed) { workouts = workouts.filter(x => x.id !== w.id); saveWorkouts(); closeEval(); renderWkList(); }
@@ -1610,7 +1679,7 @@
     const p = tMode === 'esteira' ? {spd: +$('tSpd').value || 6, inc: +$('tSpdInc').value || 1, grade: +$('tGrade').value || 0}
             : tMode === 'bike' ? {w: +$('tW').value || 75, inc: +$('tWInc').value || 25} : {};
     beep(1);
-    if (!wk) { setType(tMode === 'livre' ? 'cardio' : 'in'); startWorkout(); }
+    if (!wk) { setType(tMode === 'livre' ? 'cardio' : 'in'); startWorkout({goal: 'livre'}); }
     test = {id: 't' + Date.now(), start: Date.now(), mode: tMode, p, stageSec: +$('tStage').value, warm: +$('tWarm').value,
             maximal: $('tMax').checked, caf: $('tCaf').checked, voice: $('tVoice').checked, said: {}, rr: [], hr: [], points: [], stages: [], curIdx: 0, vt2Live: false, lastPt: 0,
             ready: readinessNow(), cfg: cfgSnap()};
@@ -1641,7 +1710,8 @@
       }
     } catch (e) {}
   }
-  function say(txt){ if (test && test.voice) speak(txt); }
+  const voiceOn = () => store.get('tVoice', '1') === '1';
+  function say(txt){ if (test ? test.voice : voiceOn()) speak(txt); }
   const numSpeech = v => String(Math.round(v * 10) / 10).replace('.', ',');
   function loadSpeech(t, idx){
     const l = loadAt(t, idx);
@@ -1695,7 +1765,7 @@
     $('tNext').classList.toggle('alert', soon);
     $('tNext').textContent = soon ? `AJUSTE → ${nextL} em ${Math.ceil(ph.left)}` : `Próxima: ${nextL} em ${fmtDur(ph.left)}`;
     t.guide = {ph: ph.idx === 0 ? 'Aquecimento' : `Etapa ${ph.idx}`, load: fmtLoad(t.mode, loadAt(t, ph.idx), t.p), next: nextL,
-               left: Math.round(ph.left * 10) / 10, idx: ph.idx, vt2: t.vt2Live, max: t.maximal, warm: t.warm, stage: t.stageSec};
+               left: Math.round(ph.left * 10) / 10, idx: ph.idx, vt2: t.vt2Live, max: t.maximal, warm: t.warm, stage: t.stageSec, len: stLen};
     $('tHR').textContent = Date.now() - lastReadingT < 5000 && lastHR ? lastHR : '--';
     const lp = t.points[t.points.length - 1];
     const a1el = $('tA1');
@@ -2212,12 +2282,14 @@
         for (const w of workouts) {
           if (w.type !== 'cardio' || w.end < from || !w.hr) continue;
           const a = analyze(w), k = dkey(w.start);
-          const d = days[k] = days[k] || [0, 0, 0, 0, 0, 0];
+          const d = days[k] = days[k] || [0, 0, 0, 0, 0, 0, 0];
           a.zoneSec.forEach((z, i) => d[i] += z / 60);
           d[5] += a.trimp;
+          if (w.iv && w.iv.done >= 3) d[6] = 1;
         }
         for (const k in days) days[k] = days[k].map(v => Math.round(v * 10) / 10);
         o.cardio = days;
+        o.z2goal = +store.get('z2goal', '180') || 0;
       } catch (e) {}
       // VO2máx: testes guiados e estimativa diária pela razão de FC (repouso deitado), últimos 60 dias
       try {
@@ -2649,6 +2721,9 @@
     const r = rmssd(); if (r !== null) parts.push('RMSSD ' + r.toFixed(0));
     if (wk) parts.push('● ' + tLbl(wk) + ' ' + fmtDur((Date.now() - wk.start) / 1000));
     if (wk && wk.n) parts.push('Média ' + Math.round(wk.sum / wk.n) + ' bpm');
+    const gd = guideNow();
+    $('fGuide').textContent = gd ? `${gd.ph} · ${gd.load} · ${fmtDur(gd.left)}` : wk && wk.warn ? wk.warn : wk && wk.a1now && Date.now() - wk.a1now.t < 25000 ? `α1 ${wk.a1now.v.toFixed(2).replace('.', ',')}` : '';
+    $('fGuide').style.color = wk && wk.warn ? '#f2c230' : '';
     if (wk && window.__wearTxt && window.__wearTxt.includes('km')) parts.push(window.__wearTxt.replace('Relógio: ', ''));
     $('fSub').textContent = parts.join('  ·  ') || '--';
     const relay = typeof wearLive !== 'undefined' && wearLive && Date.now() - wearLive.at < 6000 && wearLive.hr > 0;
@@ -2820,6 +2895,7 @@
         ${L.n7 < 3 ? '<p class="status-line neu">Menos de 3 medições nos últimos 7 dias: a média móvel fica pouco confiável.</p>' : ''}`;
       // FC de repouso alimenta a configuração (usada em estimativas futuras)
       $('fcrep').value = Math.round(H.cur); store.set('fcrep', $('fcrep').value);
+      if ($('fcrepSrc')) $('fcrepSrc').textContent = `FC de repouso ${Math.round(H.cur)} bpm: média de 7 dias das medições de repouso deitado (atualiza sozinha a cada medição).`;
     }
     drawTrend($('trendLn'), s, 'ln', L, 2);
     drawTrend($('trendHr'), s, 'hr', H, 0);
@@ -2908,6 +2984,93 @@
     }).join('');
   }
 
+  // ---------- cardio guiado: DFA α1 ao vivo, alerta de zona 2 e sessão 4×4 ----------
+  function ivPlan(fm){
+    const lo = Math.round(fm * 0.90), hi = Math.round(fm * 0.95);
+    const ph = [{k: 'warm', len: 600, name: 'Aquecimento', tgt: 'Zona 2, ritmo confortável'}];
+    for (let i = 1; i <= 4; i++) {
+      ph.push({k: 'work', n: i, len: 240, name: `Tiro ${i}/4`, tgt: `alvo ${lo}–${hi} bpm`});
+      if (i < 4) ph.push({k: 'rec', n: i, len: 180, name: `Recuperação ${i}`, tgt: 'caminhada leve'});
+    }
+    ph.push({k: 'cool', len: 300, name: 'Desaquecimento', tgt: 'caminhada leve'});
+    let acc = 0; for (const p of ph) { p.t0 = acc; acc += p.len; }
+    return {lo, hi, ph, total: acc, said: {}, res: [], cur: -1};
+  }
+  function ivSpeech(p, w){
+    if (!p) return 'Sessão concluída. Pode encerrar o treino.';
+    if (p.k === 'work') return `tiro ${p.n} de 4. Suba até ${w.lo} a ${w.hi} batimentos.`;
+    if (p.k === 'rec') return 'recuperação ativa de 3 minutos, caminhada leve.';
+    return 'desaquecimento de 5 minutos, caminhada leve.';
+  }
+  function tickGuided(){
+    if (!wk || wk.type !== 'cardio') { $('a1Line').textContent = ''; return; }
+    wk.rrw = wk.rrw || []; wk.a1pts = wk.a1pts || []; wk.z2 = wk.z2 || {over: false, lastSay: 0, low0: 0, hi0: 0};
+    const now = Date.now(), e = (now - wk.start) / 1000;
+    const hrNow = device && now - lastReadingT < 5000 ? lastHR : 0;
+    // DFA α1 a cada 10 s (janela de 2 min)
+    if (e >= 120 && (!wk.a1t || now - wk.a1t >= 10000)) {
+      wk.a1t = now;
+      const raw = wk.rrw.filter(r => r[0] >= now - 120000).map(r => r[1]);
+      if (raw.length >= 80) {
+        const cl = cleanRR(raw), a1 = dfaA1(cl.rr);
+        if (a1 !== null && cl.artPct <= 5) { wk.a1now = {v: a1, t: now}; wk.a1pts.push([Math.round(e), +a1.toFixed(3), hrNow]); }
+      }
+    }
+    const a1ok = wk.a1now && now - wk.a1now.t < 25000;
+    $('a1Line').textContent = a1ok ? `DFA α1 ${wk.a1now.v.toFixed(2).replace('.', ',')} · ${wk.a1now.v >= 0.75 ? 'abaixo do 1º limiar (zona 2 ou menos)' : wk.a1now.v >= 0.5 ? 'entre os limiares' : 'acima do 2º limiar'}` : (e < 120 ? 'DFA α1: aguardando 2 min de dados' : 'DFA α1: sem dados limpos da cinta');
+    wk.warn = '';
+    // zona 2
+    if (wk.goal === 'z2' && e >= 300) {
+      const z = wk.z2, last = wk.a1pts.slice(-6), recent = last.length === 6 && now - wk.a1now.t < 25000;
+      const zb = curZB();
+      let over, under = false;
+      if (recent) over = last.every(p => p[1] < 0.75) ? true : last.slice(-3).every(p => p[1] >= 0.75) ? false : z.over;
+      else {
+        z.hi0 = hrNow > zb[2] - 1 ? (z.hi0 || now) : 0;
+        over = z.hi0 && now - z.hi0 > 60000 ? true : hrNow && hrNow <= zb[2] - 1 ? false : z.over;
+      }
+      z.low0 = hrNow && hrNow < zb[1] && e > 600 ? (z.low0 || now) : 0;
+      under = z.low0 && now - z.low0 > 120000;
+      if (over && (!z.over || now - z.lastSay > 120000)) { say('Acima da zona 2. Reduza o ritmo.'); z.lastSay = now; }
+      if (!over && z.over) say('De volta à zona 2.');
+      if (!over && under && now - z.lastSay > 180000) { say('Abaixo da zona 2. Pode aumentar um pouco.'); z.lastSay = now; }
+      z.over = over;
+      wk.warn = over ? '↓ Acima da zona 2' : under ? '↑ Abaixo da zona 2' : '';
+    }
+    // 4×4
+    const w = wk.iv;
+    if (w) {
+      const i = w.ph.findIndex(p => e >= p.t0 && e < p.t0 + p.len);
+      const p = i >= 0 ? w.ph[i] : null, left = p ? p.t0 + p.len - e : 0, nx = w.ph[i + 1];
+      if (i !== w.cur) {
+        if (w.cur >= 0 && w.ph[w.cur].k === 'work') w.res[w.ph[w.cur].n - 1] = w.acc;
+        if (p && p.k === 'work') w.acc = {n: p.n, sec: 0, inT: 0, sum: 0, cnt: 0, max: 0, said: {}};
+        if (!p && w.cur >= 0) { say(ivSpeech(null, w)); beep(3); }
+        else if (w.cur >= 0) beep(2);
+        w.cur = i;
+      }
+      if (p && left <= 5.5 && !w.said[i]) { w.said[i] = 1; say('Em 5 segundos: ' + ivSpeech(nx, w)); }
+      if (p && p.k === 'work' && w.acc && hrNow) {
+        const a = w.acc; a.sec++; a.sum += hrNow; a.cnt++; a.max = Math.max(a.max, hrNow);
+        if (hrNow >= w.lo && hrNow <= w.hi) a.inT++;
+        const into = p.len - left;
+        if (into > 150 && hrNow < w.lo - 3 && !a.said.lo) { a.said.lo = 1; say('Abaixo do alvo. Aumente.'); }
+        if (into > 60 && hrNow > w.hi + 3 && !a.said.hi) { a.said.hi = 1; say('Acima do alvo. Pode reduzir um pouco.'); }
+      }
+      const g = p ? {ph: p.name, load: p.tgt, next: nx ? `${nx.name} (${nx.tgt})` : 'Fim da sessão', left: Math.round(left * 10) / 10, idx: i, vt2: false, max: true, len: p.len} : null;
+      w.guide = g;
+      $('ivBox').classList.toggle('hidden', !p);
+      if (p) {
+        $('ivPh').textContent = p.name; $('ivLeft').textContent = fmtDur(left);
+        $('ivTarget').textContent = p.tgt;
+        $('ivTarget').style.color = p.k === 'work' && hrNow ? (hrNow < w.lo ? '#58a6ff' : hrNow > w.hi ? '#f85149' : '#3fb950') : '';
+        $('ivBar').firstElementChild.style.width = Math.min(100, (1 - left / p.len) * 100) + '%';
+        $('ivNext').textContent = left <= 5.5 && nx ? `AJUSTE → ${nx.name}: ${nx.tgt} em ${Math.ceil(left)}` : `Depois: ${nx ? nx.name + ' · ' + nx.tgt : 'fim da sessão'}`;
+      }
+    } else $('ivBox').classList.add('hidden');
+  }
+  const guideNow = () => test && test.guide ? test.guide : wk && wk.iv && wk.iv.guide ? wk.iv.guide : null;
+
   // ---------- notificação fixa e bolha (Android) ----------
   let liveN = 0;
   let liveSent = 0, liveErr = '';
@@ -2920,7 +3083,7 @@
       active: true, type: tLbl(wk), start: wk.start, hr: own || (wl && wl.hr > 0 ? wl.hr : 0), zb: curZB(),
       avg: wk.n ? wk.sum / wk.n : 0, max: wk.max, trimp: wk.trimp, zs: wk.zoneSec,
       dist: wl && wl.gps ? wl.dist || 0 : 0, spd: wl && wl.pace > 0 && wl.pace < 1800 ? 3600 / wl.pace : 0,
-      test: test && test.guide ? test.guide : null
+      test: guideNow(), warn: wk.warn || ''
     }));
     return true;
   }
@@ -2940,9 +3103,11 @@
     if (focusOn) renderFocus();
     tickHRR();
     tickTest();
+    try { tickGuided(); } catch (e) {}
     if (wk && NATIVE && NATIVE.wearLive) {
       const ownHr = device && Date.now() - lastReadingT < 5000 ? lastHR : 0;
-      if (test && test.guide) NATIVE.wearLive(JSON.stringify({hr: ownHr, sid: wk.sid, test: test.guide}));
+      const g = guideNow();
+      if (g || wk.warn) NATIVE.wearLive(JSON.stringify({hr: ownHr, sid: wk.sid, test: g, warn: wk.warn || ''}));
       else if (ownHr && (++liveTick % 2 === 0)) NATIVE.wearLive(JSON.stringify({hr: ownHr, sid: wk.sid}));
     }
     const wl = typeof wearLive !== 'undefined' && wearLive && Date.now() - wearLive.at < 8000 ? wearLive : null;
@@ -3054,6 +3219,8 @@
   document.querySelectorAll('.holdEnd').forEach(setupHold);
   document.querySelectorAll('.typeSeg').forEach(g => g.addEventListener('click', e => { const b = e.target.closest('button[data-t]'); if (b) setType(b.dataset.t); }));
   document.querySelectorAll('.fastedChk').forEach(c => c.addEventListener('change', () => setFasted(c.checked)));
+  document.querySelectorAll('.goalSeg').forEach(g => g.addEventListener('click', e => { const b = e.target.closest('button[data-g]'); if (b) setGoal(b.dataset.g); }));
+  setGoal(store.get('cGoal', 'livre')); showGoal();
   $('evalClose').addEventListener('click', closeEval);
   $('wkList').addEventListener('click', e => { const b = e.target.closest('.wkItem'); if (b) openEval(b.dataset.id); });
   $('btnBackup').addEventListener('click', backupAll);
@@ -3111,7 +3278,7 @@
   renderHistory();
 
   // ---------- app instalável (PWA) ----------
-  const APP_VERSION = '2026-11-23.4';
+  const APP_VERSION = '2026-11-24.1';
   $('appVer').textContent = APP_VERSION + (NATIVE ? ' · app Android ' + NATIVE.version() : '');
   nativeInit();
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
