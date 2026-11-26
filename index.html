@@ -138,6 +138,11 @@
   #tDo{text-align:center;font-size:15px;color:var(--mut);margin:0 0 6px}
   #tBar{height:8px;background:#21262d;border-radius:4px;overflow:hidden;margin:6px 0}
   #tBar div{height:100%;background:#58a6ff;width:0}
+  .tplan{width:100%;font-size:13px;border-collapse:collapse;margin-top:6px}
+  .tplan td,.tplan th{padding:4px 6px;text-align:left;border-bottom:1px solid #21262d}
+  .tplan tr.cur td{background:#1f6feb33;font-weight:700}
+  .tplan tr.done td{color:#6e7681}
+  .tplan .vt{color:#f2c230;font-weight:700}
   #tNext.alert{background:#f2c230;color:#0d1117;font-size:22px;font-weight:800;border-radius:10px;padding:10px 6px;margin-top:6px}
   .a1hi{color:#5fd68f} .a1mid{color:#f2c230} .a1lo{color:#ff7b72}
   #testTrend{height:150px}
@@ -420,6 +425,8 @@
         <label for="tWarm">Aquecimento</label>
         <select id="tWarm"><option value="300">5 min</option><option value="420">7 min</option><option value="180">3 min</option></select>
       </div>
+      <p id="tAdj" class="msg" style="border-left:3px solid #58a6ff;padding-left:8px"></p>
+      <div id="tPlan"></div>
       <label class="chk"><input type="checkbox" id="tMax"> Ir até a exaustão para medir a FCmáx real (a cada 6–8 semanas basta)</label>
       <label class="chk"><input type="checkbox" id="tCaf"> Tomei cafeína antes do teste</label>
       <label class="chk"><input type="checkbox" id="tVoice" checked> Avisos por voz (5 s antes de cada troca de etapa)</label>
@@ -444,6 +451,7 @@
     <div id="tDo"></div>
     <div id="tBar"><div></div></div>
     <div id="tNext" class="msg" style="text-align:center"></div>
+    <div id="tPlanRun" style="margin-top:8px"></div>
     <div class="grid" style="margin:12px 0">
       <div class="stat"><b id="tHR">--</b><span>FC</span></div>
       <div class="stat"><b id="tA1">--</b><span>DFA alfa1</span></div>
@@ -1647,15 +1655,97 @@
     $('tpBike').classList.toggle('hidden', m !== 'bike');
     $('tpLivre').classList.toggle('hidden', m !== 'livre');
     weightMsg();
+    if ($('tPlan')) renderPlan();
   }
   const T_INPUTS = ['tSpd', 'tSpdInc', 'tGrade', 'tW', 'tWInc', 'tStage', 'tWarm'];
+  T_INPUTS.forEach(id => $(id).addEventListener('input', () => { renderPlan(); }));
+  // ---------- plano de etapas (o que ajustar em cada nível) ----------
+  function planFrom(mode, p, n){
+    // VO2 do VT1/VT2 do último teste no mesmo modo, para prever a sensação de cada etapa
+    const last = [...tests].reverse().find(t => t.mode === mode && t.res && t.res.vt1Load && t.res.vt1Ok);
+    const wgt = +$('peso').value || null;
+    let v1 = null, v2 = null;
+    if (last && mode === 'esteira') {
+      v1 = vo2Load('esteira', last.res.vt1Load, last.p);
+      v2 = last.res.vt2Ok && last.res.vt2Load ? vo2Load('esteira', last.res.vt2Load, last.p) : null;
+    } else if (last && mode === 'bike') { v1 = last.res.vt1Load; v2 = last.res.vt2Ok ? last.res.vt2Load : null; }
+    const rows = [];
+    for (let i = 0; i <= n; i++) {
+      const t = {mode, p}, load = loadAt(t, i);
+      const vo2 = mode === 'esteira' ? vo2Load('esteira', load, p) : mode === 'bike' ? vo2Load('bike', load, p, wgt) : null;
+      const x = mode === 'bike' ? load : vo2;
+      let feel;
+      if (v1 && x != null) feel = x < v1 * 0.85 ? 'conversa fácil' : x < v1 ? 'frases inteiras' : v2 && x >= v2 ? 'muito difícil' : !v2 || x < (v1 + v2) / 2 ? 'fala cortada' : 'difícil';
+      else feel = ['muito leve', 'conversa fácil', 'conversa fácil', 'frases inteiras', 'fala cortada', 'difícil', 'muito difícil', 'só até a exaustão', 'só até a exaustão'][Math.min(i, 8)];
+      rows.push({i, load, vo2, feel, vt1: false, vt2: false, x});
+    }
+    if (v1) { const r = rows.find(r => r.i > 0 && r.x >= v1); if (r) r.vt1 = true; }
+    if (v2) { const r = rows.find(r => r.i > 0 && r.x >= v2); if (r) r.vt2 = true; }
+    return {rows, calibrated: !!v1};
+  }
+  function planHtml(mode, p, n, cur){
+    if (mode === 'livre') return '';
+    const pl = planFrom(mode, p, n);
+    const head = mode === 'esteira' ? '<th>Etapa</th><th>Vel.</th><th>Incl.</th><th>VO2*</th><th>Sensação</th>' : '<th>Etapa</th><th>Potência</th><th>VO2*</th><th>Sensação</th>';
+    const body = pl.rows.map(r => `<tr class="${cur === r.i ? 'cur' : cur != null && r.i < cur ? 'done' : ''}"><td>${r.i === 0 ? 'Aquec.' : r.i}</td>${mode === 'esteira'
+      ? `<td>${fmt1(r.load)} km/h</td><td>${fmt1(p.grade || 0)}%</td>` : `<td>${Math.round(r.load)} W</td>`}<td>${r.vo2 ? Math.round(r.vo2) : '--'}</td><td>${r.feel}${r.vt1 ? ' <span class="vt">← VT1</span>' : ''}${r.vt2 ? ' <span class="vt">← VT2</span>' : ''}</td></tr>`).join('');
+    return `<table class="tplan"><tr>${head}</tr>${body}</table>
+      <p class="msg">*VO2 estimado (ml/kg/min) pelas equações do ACSM — extrapolação, não medida. ${pl.calibrated ? 'Sensação e marcas de VT1/VT2 previstas pelos limiares do seu último teste neste modo.' : 'Sensação genérica até haver um teste válido neste modo.'} Não segure no apoio da esteira.</p>`;
+  }
+  function setupP(){
+    return tMode === 'esteira' ? {spd: +$('tSpd').value || 6, inc: +$('tSpdInc').value || 1, grade: +$('tGrade').value || 0}
+         : tMode === 'bike' ? {w: +$('tW').value || 75, inc: +$('tWInc').value || 25} : {};
+  }
+  const renderPlan = () => { $('tPlan').innerHTML = planHtml(tMode, setupP(), 8, null); };
+
+  // ---------- ajuste automático do protocolo: VT2 deve cair entre a 5ª e a 6ª etapa ----------
+  function autoAdjust(t){
+    if (!t || !t.res || (t.mode !== 'esteira' && t.mode !== 'bike')) return null;
+    const p = t.p, r = t.res, step = t.mode === 'esteira' ? 0.1 : 5;
+    const rnd = v => Math.round(v / step) * step;
+    const lastIdx = Math.max(0, ...t.stages.map(s => s.idx));
+    let start = t.mode === 'esteira' ? p.spd : p.w, inc = p.inc, why;
+    if (r.vt2Ok && r.vt2Load) {
+      const k = (r.vt2Load - start) / inc;
+      if (k >= 4 && k <= 7) return {keep: true, msg: `Último teste: VT2 na etapa ${k.toFixed(1).replace('.', ',')} — dentro da faixa ideal (4–7). Protocolo mantido.`};
+      if (r.vt1Ok && r.vt1Load && r.vt2Load > r.vt1Load) inc = (r.vt2Load - r.vt1Load) / 2.5;
+      inc = t.mode === 'esteira' ? Math.min(1.5, Math.max(0.3, inc)) : Math.min(40, Math.max(10, inc));
+      inc = rnd(inc);
+      start = rnd(r.vt2Load - 5.5 * inc);
+      why = `o VT2 veio na etapa ${k.toFixed(1).replace('.', ',')} (ideal: 5–6)`;
+    } else {
+      start = rnd(start + 2 * inc);
+      why = `o VT2 não foi atingido até a etapa ${lastIdx}`;
+    }
+    start = t.mode === 'esteira' ? Math.max(3, start) : Math.max(25, start);
+    return {keep: false, mode: t.mode, start, inc, why,
+            msg: `Ajuste automático: ${why}. Próximo teste: ${t.mode === 'esteira' ? `início ${fmt1(start)} km/h, +${fmt1(inc)} km/h por etapa` : `início ${start} W, +${inc} W por etapa`} — para o VT2 cair por volta da 5ª–6ª etapa.`};
+  }
+  function applyAdjust(t){
+    const a = autoAdjust(t);
+    store.set('tAdjFor', t.id);
+    if (!a) return;
+    if (!a.keep) {
+      if (a.mode === 'esteira') { store.set('tSpd', String(a.start)); store.set('tSpdInc', String(a.inc)); }
+      else { store.set('tW', String(a.start)); store.set('tWInc', String(a.inc)); }
+      store.set('tMode', a.mode);
+    }
+    store.set('tAdjMsg', a.msg);
+  }
+
   function openTestSetup(){
+    // ajusta pelo último teste se ainda não foi ajustado
+    const lastT = tests.length ? tests[tests.length - 1] : null;
+    if (lastT && store.get('tAdjFor', '') !== lastT.id) { applyAdjust(lastT); tMode = store.get('tMode', tMode); }
     if (test) { showTestRun(); return; }
     T_INPUTS.forEach(id => { $(id).value = store.get(id, $(id).value); });
     $('tMax').checked = false;
     $('tCaf').checked = store.get('tCaf', '0') === '1';
     $('tVoice').checked = store.get('tVoice', '1') === '1';
     setTMode(tMode);
+    $('tAdj').textContent = store.get('tAdjMsg', '');
+    $('tAdj').classList.toggle('hidden', !store.get('tAdjMsg', ''));
+    renderPlan();
     $('tReady').innerHTML = readyHtml(readinessNow()) + nightReadyHtml();
     $('testSetup').classList.remove('hidden'); $('testRun').classList.add('hidden');
     $('testOv').classList.remove('hidden'); $('testOv').scrollTop = 0;
@@ -1767,6 +1857,7 @@
     $('tPhase').textContent = ph.idx === 0 ? 'Aquecimento' : `Etapa ${ph.idx}`;
     $('tLoad').textContent = fmtLoad(t.mode, loadAt(t, ph.idx), t.p);
     const stLen = ph.idx === 0 ? t.warm : t.stageSec;
+    if (t.planIdx !== ph.idx) { t.planIdx = ph.idx; $('tPlanRun').innerHTML = planHtml(t.mode, t.p, Math.max(8, ph.idx + 2), ph.idx); }
     $('tBar').firstElementChild.style.width = Math.min(100, (1 - ph.left / stLen) * 100) + '%';
     $('tDo').textContent = doText(t, ph.idx);
     const nextL = fmtLoad(t.mode, loadAt(t, ph.idx + 1), t.p);
@@ -1802,6 +1893,7 @@
     const rec = {id: t.id, start: t.start, end: t.end, mode: t.mode, p: t.p, stageSec: t.stageSec, warm: t.warm, maximal: t.maximal, caf: !!t.caf,
                  points: t.points, stages: t.stages, ready: t.ready, cfg: t.cfg, rr: t.rr.map(r => Math.round(r[1])), res};
     tests.push(rec); saveTests();
+    applyAdjust(rec);
     if (hcCanWrite() && hcGranted.includes('w_vo2') && (res.vo2sub || res.vo2uth)) {
       const v = res.vo2sub ? res.vo2sub.v : res.vo2uth;
       if (v > 10 && v < 90) try { NATIVE.hcWrite('vo2', JSON.stringify({id: rec.id, t: rec.end, value: v, method: res.vo2sub ? 'other' : 'ratio'})); } catch (e) {}
@@ -1977,6 +2069,7 @@
         <span class="conf ${qcls}">Qualidade ${r.quality}: R² ${r.r2 != null ? r.r2.toFixed(2) : '--'} · ${r.nPts} pontos válidos · artefatos ${r.artMean.toFixed(1)}%</span>
         ${(!r.vt1Ok || !r.vt2Ok) ? '<p class="msg">* Valor extrapolado: o alfa1 não cruzou esse limiar durante o teste. Não é usado para definir zonas.</p>' : ''}
         ${t.maximal ? '' : '<p class="msg">Teste submáximo: FCmáx não medida.</p>'}
+        ${(() => { const a = autoAdjust(t); return a ? `<p class="msg" style="border-left:3px solid #58a6ff;padding-left:8px">${a.msg}</p>` : ''; })()}
         <p class="msg">Cafeína antes do teste: <b>${t.caf ? 'sim' : 'não'}</b> <button id="tCafToggle" style="margin-left:6px;padding:2px 10px">alterar</button></p>
         <p class="msg">${{sem: 'Prontidão: sem medição de repouso no dia.', base: 'Prontidão: linha de base de repouso ainda em construção.', normal: 'Prontidão: lnRMSSD do dia dentro do normal.', alta: 'Prontidão: lnRMSSD do dia acima do normal.', baixa: 'Prontidão: lnRMSSD do dia abaixo do normal. Fadiga pode ter rebaixado os limiares; este teste fica fora da mediana das zonas.'}[t.ready ? t.ready.status : 'sem']}</p>
       </section>
@@ -3305,7 +3398,7 @@
   renderHistory();
 
   // ---------- app instalável (PWA) ----------
-  const APP_VERSION = '2026-11-26.1';
+  const APP_VERSION = '2026-11-26.2';
   $('appVer').textContent = APP_VERSION + (NATIVE ? ' · app Android ' + NATIVE.version() : '');
   nativeInit();
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
