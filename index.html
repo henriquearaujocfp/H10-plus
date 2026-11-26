@@ -617,9 +617,10 @@
     lastReadingT = t; lastHR = hr; lastContact = contact;
     if (rest && !rest.done) { if (hr > 0) rest.hr.push(hr); for (const v of rr) rest.rr.push(v); }
 
-    if (wk && hr > 0) onWorkoutSample(t, hr, rr, contact);
-    if (hrrCap && hr > 0) hrrCap.samples.push([t, hr]);
-    if (test) { if (hr > 0) test.hr.push([t, hr]); for (const v of rr) test.rr.push([t, v]); }
+    // nada aqui pode impedir a tela de mostrar a FC
+    try { if (wk && hr > 0) onWorkoutSample(t, hr, rr, contact); } catch (e) { console.error(e); }
+    try { if (hrrCap && hr > 0) hrrCap.samples.push([t, hr]); } catch (e) {}
+    try { if (test) { if (hr > 0) test.hr.push([t, hr]); for (const v of rr) test.rr.push([t, v]); } } catch (e) {}
     updateUI(hr, contact, rr);
   }
 
@@ -3304,7 +3305,7 @@
   renderHistory();
 
   // ---------- app instalável (PWA) ----------
-  const APP_VERSION = '2026-11-24.2';
+  const APP_VERSION = '2026-11-26.1';
   $('appVer').textContent = APP_VERSION + (NATIVE ? ' · app Android ' + NATIVE.version() : '');
   nativeInit();
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

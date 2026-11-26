@@ -32,6 +32,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
@@ -202,22 +203,30 @@ class H10Bridge(private val act: MainActivity, private val web: WebView) {
     private fun startHr(id: String) {
         hrJob?.cancel()
         hrJob = scope.launch {
-            try {
-                api.startHrStreaming(id).collect { d ->
-                    for (s in d.samples) {
-                        val o = JSONObject()
-                            .put("hr", s.hr)
-                            .put("rr", JSONArray(s.rrsMs))
-                            .put("contact", if (s.contactStatusSupported) s.contactStatus else JSONObject.NULL)
-                        emit("hr", o)
-                        H10Widget.live(act.applicationContext, s.hr)
-                        LiveHub.nativeHr = s.hr; LiveHub.nativeHrAt = System.currentTimeMillis()
+            var tries = 0
+            while (isActive && connected && deviceId == id) {
+                try {
+                    api.startHrStreaming(id).collect { d ->
+                        tries = 0
+                        for (s in d.samples) {
+                            val o = JSONObject()
+                                .put("hr", s.hr)
+                                .put("rr", JSONArray(s.rrsMs))
+                                .put("contact", if (s.contactStatusSupported) s.contactStatus else JSONObject.NULL)
+                            emit("hr", o)
+                            // widget/notificação nunca podem derrubar a leitura de FC
+                            try { LiveHub.nativeHr = s.hr; LiveHub.nativeHrAt = System.currentTimeMillis() } catch (_: Exception) { }
+                            try { H10Widget.live(act.applicationContext, s.hr) } catch (_: Exception) { }
+                        }
                     }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    emitError("FC interrompida (${e.message}); reconectando a leitura…")
                 }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                emitError("FC interrompida: ${e.message}")
+                // o fluxo terminou ou falhou: tenta de novo enquanto a cinta estiver conectada
+                tries++
+                delay(if (tries < 5) 1500L else 5000L)
             }
         }
     }
