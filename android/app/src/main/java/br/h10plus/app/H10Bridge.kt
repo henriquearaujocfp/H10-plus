@@ -58,9 +58,12 @@ class H10Bridge(private val act: MainActivity, private val web: WebView) {
             PolarBleApi.PolarBleSdkFeature.FEATURE_BATTERY_INFO,
             PolarBleApi.PolarBleSdkFeature.FEATURE_DEVICE_INFO,
             PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_ONLINE_STREAMING,
-            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_H10_EXERCISE_RECORDING
+            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_H10_EXERCISE_RECORDING,
+            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_ACTIVITY_DATA,
+            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_SLEEP_DATA
         )
     )
+    val loop = LoopBridge(act.applicationContext, api, scope) { t, o -> emit(t, o) }
 
     @Volatile private var deviceId: String? = null
     @Volatile private var connected = false
@@ -78,10 +81,12 @@ class H10Bridge(private val act: MainActivity, private val web: WebView) {
             }
 
             override fun deviceConnecting(polarDeviceInfo: PolarDeviceInfo) {
+                if (loop.isLoop(polarDeviceInfo.deviceId)) return
                 emit("status", JSONObject().put("state", "connecting").put("id", polarDeviceInfo.deviceId))
             }
 
             override fun deviceConnected(polarDeviceInfo: PolarDeviceInfo) {
+                if (loop.isLoop(polarDeviceInfo.deviceId)) { loop.onConnected(); return }
                 connected = true
                 deviceId = polarDeviceInfo.deviceId
                 prefs.edit().putString("dev", polarDeviceInfo.deviceId).apply()
@@ -89,6 +94,7 @@ class H10Bridge(private val act: MainActivity, private val web: WebView) {
             }
 
             override fun deviceDisconnected(polarDeviceInfo: PolarDeviceInfo) {
+                if (loop.isLoop(polarDeviceInfo.deviceId)) { loop.onDisconnected(); return }
                 H10Widget.live(act.applicationContext, 0, true)
                 connected = false
                 main.post { hrJob?.cancel(); ecgJob?.cancel() }
@@ -96,11 +102,13 @@ class H10Bridge(private val act: MainActivity, private val web: WebView) {
             }
 
             override fun bleSdkFeatureReady(identifier: String, feature: PolarBleApi.PolarBleSdkFeature) {
+                if (loop.isLoop(identifier)) { loop.onFeature(feature); return }
                 emit("feature", JSONObject().put("f", feature.name))
                 if (feature == PolarBleApi.PolarBleSdkFeature.FEATURE_HR) main.post { startHr(identifier) }
             }
 
             override fun batteryLevelReceived(identifier: String, level: Int) {
+                if (loop.isLoop(identifier)) { emit("loop", JSONObject().put("kind", "battery").put("level", level)); return }
                 emit("battery", JSONObject().put("level", level))
             }
 
@@ -137,12 +145,13 @@ class H10Bridge(private val act: MainActivity, private val web: WebView) {
 
     fun onPermissionsResult(ok: Boolean) {
         if (!ok) {
-            pendingConnect = false
+            pendingConnect = false; pendingLoop = null
             emitError("Sem permissão de Bluetooth. Libere \"Dispositivos próximos\" para o app nas configurações do Android.")
             emit("status", JSONObject().put("state", "disconnected"))
             return
         }
         if (pendingConnect) { pendingConnect = false; doConnect() }
+        pendingLoop?.let { p -> pendingLoop = null; if (p == "pair") loop.pair() else loop.sync(p.substringAfter(':').toIntOrNull() ?: 7) }
     }
 
     private fun doConnect() {
@@ -381,6 +390,13 @@ class H10Bridge(private val act: MainActivity, private val web: WebView) {
     @JavascriptInterface
     fun widgetUpdate(json: String) = main.post { H10Widget.setSummary(act.applicationContext, json) }
 
+    // ---------------- Polar Loop ----------------
+    @JavascriptInterface fun loopStatus(): String = loop.status()
+    @JavascriptInterface fun loopPair() = main.post { pendingLoop = "pair"; act.requestBlePermissions() }
+    @JavascriptInterface fun loopSync(days: Int) = main.post { pendingLoop = "sync:$days"; act.requestBlePermissions() }
+    @JavascriptInterface fun loopForget() = main.post { loop.forget() }
+    private var pendingLoop: String? = null
+
     @JavascriptInterface
     fun hcWrite(kind: String, json: String) = main.post { health.write(kind, json) }
 
@@ -460,7 +476,7 @@ class H10Bridge(private val act: MainActivity, private val web: WebView) {
                 try {
                     for (item in buf) {
                         val path = item.uri.path ?: continue
-                        if (!path.startsWith("/session/")) continue
+                        if (!path.startsWith("/session/") && !path.startsWith("/night/")) continue
                         val asset = DataMapItem.fromDataItem(item).dataMap.getAsset("data") ?: continue
                         val fd = client.getFdForAsset(asset).await()
                         val json = GZIPInputStream(fd.inputStream).bufferedReader().use { it.readText() }

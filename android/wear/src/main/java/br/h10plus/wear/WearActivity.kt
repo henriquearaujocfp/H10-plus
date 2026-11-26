@@ -69,6 +69,8 @@ class WearActivity : ComponentActivity() {
     private lateinit var btnForca: TextView
     private lateinit var btnGps: TextView
     private lateinit var btnStart: TextView
+    private lateinit var btnNight: TextView
+    private lateinit var tvNight: TextView
     private lateinit var tvMsg: TextView
 
     private var holdAnim: ValueAnimator? = null
@@ -83,6 +85,29 @@ class WearActivity : ComponentActivity() {
             override fun onExitAmbient() { ambient = false; render() }
             override fun onUpdateAmbient() { render() }
         })
+    }
+
+    private val nightPerm = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { res ->
+        if (checkSelfPermission(android.Manifest.permission.BODY_SENSORS) == android.content.pm.PackageManager.PERMISSION_GRANTED) startNight()
+        else WorkoutState.message = "Permita \"Sensores do corpo\" para o modo noite."
+    }
+
+    private fun toggleNight() {
+        if (NightService.running) {
+            startService(Intent(this, NightService::class.java).setAction(NightService.ACTION_STOP))
+            return
+        }
+        if (WorkoutState.phase != WorkoutState.Phase.IDLE && WorkoutState.phase != WorkoutState.Phase.DONE) {
+            WorkoutState.message = "Encerre o treino antes do modo noite."; return
+        }
+        nightPerm.launch(arrayOf(android.Manifest.permission.BODY_SENSORS, android.Manifest.permission.ACTIVITY_RECOGNITION,
+            "com.samsung.android.hardware.sensormanager.permission.READ_ADDITIONAL_HEALTH_DATA"))
+    }
+
+    private fun startNight() {
+        androidx.core.content.ContextCompat.startForegroundService(this, Intent(this, NightService::class.java).setAction(NightService.ACTION_START))
+        WorkoutState.message = "Modo noite ligado. Pode sair do app; desligue ao acordar."
+        ui.postDelayed({ moveTaskToBack(true) }, 1500)
     }
 
     private val permLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -191,6 +216,11 @@ class WearActivity : ComponentActivity() {
         col.addView(typeRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
         col.addView(btnGps, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
         col.addView(btnStart, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        btnNight = pill("🌙 Modo noite", 0xFF21262D.toInt(), size = 12f)
+        btnNight.setOnClickListener { toggleNight() }
+        tvNight = label(10f, 0xFFB7C3D0.toInt())
+        col.addView(btnNight, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        col.addView(tvNight, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(2) })
         col.addView(tvMsg, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
         col.addView(tvInfo, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
         idleView.addView(col)
@@ -404,6 +434,14 @@ class WearActivity : ComponentActivity() {
                 b.setTextColor(if (k == sel) Color.BLACK else Color.WHITE)
             }
             btnStart.alpha = if (st.connState == "conectado") 1f else 0.6f
+            if (NightService.running) {
+                val h = (now - NightService.startMs) / 60000
+                btnNight.text = "☀ Encerrar noite"
+                tvNight.text = "Gravando ${h / 60}h${"%02d".format(h % 60)} · ${NightService.ibiCount} batimentos" + (if (NightService.lastHr > 0) " · FC ${NightService.lastHr}" else "") + (if (NightService.lastMsg.isNotEmpty()) "\n" + NightService.lastMsg else "")
+            } else {
+                btnNight.text = "🌙 Modo noite"
+                tvNight.text = NightService.lastMsg
+            }
             tvMsg.text = st.message
             return
         }

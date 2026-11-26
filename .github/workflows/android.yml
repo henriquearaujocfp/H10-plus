@@ -30,6 +30,16 @@ jobs:
         with:
           gradle-version: '8.12'
 
+      - name: SDK de sensores da Samsung (cifrado no repositório)
+        env:
+          SAMSUNG_AAR_KEY: ${{ secrets.SAMSUNG_AAR_KEY }}
+        run: |
+          if [ -n "$SAMSUNG_AAR_KEY" ] && [ -f android/wear/libs/samsung-health-sensor-api.aar.enc ]; then
+            openssl enc -d -aes-256-cbc -pbkdf2 -in android/wear/libs/samsung-health-sensor-api.aar.enc \
+              -out android/wear/libs/samsung-health-sensor-api.aar -pass env:SAMSUNG_AAR_KEY && echo "SDK Samsung decifrado"
+          else
+            echo "SDK Samsung ausente: modo noite fica indisponível neste build"
+          fi
       - name: Compilar APK
         working-directory: android
         run: |
