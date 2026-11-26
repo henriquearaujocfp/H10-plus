@@ -138,6 +138,11 @@
   #tDo{text-align:center;font-size:15px;color:var(--mut);margin:0 0 6px}
   #tBar{height:8px;background:#21262d;border-radius:4px;overflow:hidden;margin:6px 0}
   #tBar div{height:100%;background:#58a6ff;width:0}
+  #coachLog .cm{border-radius:10px;padding:8px 10px;margin:6px 0;font-size:14px;line-height:1.45;white-space:pre-wrap}
+  #coachLog .cm.u{background:#1f6feb22;margin-left:20%}
+  #coachLog .cm.a{background:#161b22;border:1px solid #30363d}
+  .rect{width:100%;font-size:13px;border-collapse:collapse}
+  .rect td,.rect th{padding:3px 5px;border-bottom:1px solid #21262d;text-align:left}
   .tplan{width:100%;font-size:13px;border-collapse:collapse;margin-top:6px}
   .tplan td,.tplan th{padding:4px 6px;text-align:left;border-bottom:1px solid #21262d}
   .tplan tr.cur td{background:#1f6feb33;font-weight:700}
@@ -283,6 +288,34 @@
     </div>
     <p id="wearMsg" class="msg"></p>
     <p class="msg">No relógio: abra o Monitor H10, escolha Cardio ou Musculação e toque em Iniciar. Ele conecta direto na cinta, grava FC, RR e GPS e, ao encerrar (segurando 5 s), mede 60 s de recuperação. Os treinos chegam aqui quando o relógio volta a ficar perto do celular; as zonas atuais são enviadas ao relógio automaticamente.</p>
+  </section>
+
+  <section class="card hidden" id="recCard">
+    <h2>Recovery</h2>
+    <div id="recBody"><p class="msg">Sem noites gravadas ainda.</p></div>
+    <h3 style="margin:14px 0 4px">Relógio: modo noite</h3>
+    <p class="msg">No app do relógio, toque em "🌙 Modo noite" ao deitar e em "☀ Encerrar noite" ao acordar. O relógio grava cada intervalo entre batimentos, a FC e a temperatura da pele e manda ao celular. Requer o SDK de sensores da Samsung no build e o modo desenvolvedor da Health Platform.</p>
+    <h3 style="margin:14px 0 4px">Polar Loop</h3>
+    <p id="loopMsg" class="msg"></p>
+    <div class="row"><button id="loopPair">Parear Polar Loop</button><button id="loopSync" class="hidden primary">Sincronizar 7 dias</button><button id="loopForget" class="hidden">Esquecer</button></div>
+  </section>
+
+  <section class="card" id="coachCard">
+    <h2>Coach Claude</h2>
+    <div class="row"><button id="coachShare" class="primary">Enviar ao projeto no Claude</button><button id="coachCopy">Copiar resumo</button></div>
+    <p class="msg">Gera um resumo dos últimos 14 dias (noites, repouso, treinos, testes e metas) e abre o compartilhamento: escolha o app Claude e envie numa conversa do projeto Recomposição Corporal — lá o Claude já tem seus exames e o plano.</p>
+    <details id="coachApi" style="margin-top:10px"><summary>Coach automático pela API (custo por uso)</summary>
+      <div class="row" style="align-items:center;gap:8px;margin-top:8px"><label for="coachKey">Chave da API</label><input id="coachKey" type="password" placeholder="sk-ant-..." style="flex:1"></div>
+      <div class="row" style="align-items:center;gap:8px;margin-top:6px"><label for="coachModel">Modelo</label>
+        <select id="coachModel"><option value="claude-haiku-5-5">Haiku 5.5 (mais barato)</option><option value="claude-sonnet-5-5" selected>Sonnet 5.5 (equilíbrio)</option><option value="claude-opus-5-5">Opus 5.5 (mais caro)</option></select></div>
+      <label for="coachCtx" style="display:block;margin-top:6px">Contexto e metas (vai em toda consulta)</label>
+      <textarea id="coachCtx" rows="6" style="width:100%"></textarea>
+      <p class="msg">A chave fica só neste aparelho. Cada consulta envia o resumo dos seus dados à API da Anthropic. Cobrança separada da assinatura do Claude.</p>
+      <div class="row" style="margin-top:6px"><button id="coachBrief" class="primary">Briefing de hoje</button><button id="coachClear">Limpar conversa</button></div>
+      <div id="coachLog" style="margin-top:8px"></div>
+      <div class="row" style="margin-top:6px"><input id="coachIn" placeholder="Pergunte ao coach…" style="flex:1"><button id="coachSend">Enviar</button></div>
+      <p id="coachCost" class="msg"></p>
+    </details>
   </section>
 
   <section class="card hidden" id="nightCard">
@@ -2339,6 +2372,252 @@
     return f.length ? `<p class="status-line bad">Noite (relógio): ${f.join('; ')}.</p>` : (nightZ(today, 'hr') ? '<p class="status-line">Noite (relógio): marcadores dentro do normal.</p>' : '');
   }
 
+  // ---------- Recovery: noites do relógio (IBI) e da Polar Loop ----------
+  function toast(t){
+    let el = document.getElementById('toast');
+    if (!el) { el = document.createElement('div'); el.id = 'toast'; el.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#161b22;border:1px solid #30363d;color:#e6edf3;padding:10px 14px;border-radius:10px;z-index:99;max-width:90vw;font-size:14px'; document.body.appendChild(el); }
+    el.textContent = t; el.style.display = 'block'; clearTimeout(el._t); el._t = setTimeout(() => el.style.display = 'none', 5000);
+  }
+  const RKEY = 'h10_recov_v1';
+  let recov = {};
+  try { recov = JSON.parse(localStorage.getItem(RKEY) || '{}') || {}; } catch (e) { recov = {}; }
+  function saveRecov(){ const ks = Object.keys(recov).sort(); while (ks.length > 180) delete recov[ks.shift()]; try { localStorage.setItem(RKEY, JSON.stringify(recov)); } catch (e) {} pushWidget(); }
+  // intervalos limpos: faixa fisiológica e variação < 20% do anterior
+  function cleanIbi(v){ const out = []; let prev = null; for (const x of v) { if (x < 300 || x > 2000) continue; if (prev && Math.abs(x - prev) / prev > 0.2) { prev = x; continue; } out.push(x); prev = x; } return out; }
+  const rmssdOf = v => { if (v.length < 30) return null; let s = 0; for (let i = 1; i < v.length; i++) { const d = v[i] - v[i - 1]; s += d * d; } return Math.sqrt(s / (v.length - 1)); };
+  // RMSSD noturno = mediana de segmentos de ~5 min (≥ 200 batimentos limpos); FC de repouso = menor média de 5 min
+  function nightStats(beats){
+    const segs = [], hrs = [];
+    let cur = [];
+    for (const b of beats) { cur.push(b); if (cur.length >= 300) { const c = cleanIbi(cur); if (c.length >= 200) { const r = rmssdOf(c); if (r) segs.push(r); hrs.push(60000 / avg(c)); } cur = []; } }
+    if (!segs.length) return null;
+    const rm = median(segs);
+    return {rmssd: +rm.toFixed(1), ln: +Math.log(rm).toFixed(3), rhr: +Math.min(...hrs).toFixed(1), segs: segs.length};
+  }
+  function importNightWatch(o){
+    const k = dkey(o.end);
+    const hc = nights[k];
+    // janela de sono: a do Samsung Health quando existe; senão a gravação inteira menos os primeiros 30 min
+    const s = hc && hc.s ? Math.max(o.start, hc.s) : o.start + 30 * 60000, e = hc && hc.e ? Math.min(o.end, hc.e) : o.end;
+    const beats = (o.ibi || []).filter(r => r[0] >= s && r[0] <= e && !r[2]).map(r => r[1]);
+    const st = nightStats(beats);
+    const tw = (o.temp || []).filter(r => r[0] >= s && r[0] <= e && r[1] > 20).map(r => r[1]);
+    const r = recov[k] = Object.assign(recov[k] || {}, {k, s, e});
+    r.w = st ? Object.assign(st, {temp: tw.length ? +median(tw).toFixed(2) : null, beats: beats.length}) : {beats: beats.length, temp: tw.length ? +median(tw).toFixed(2) : null};
+    saveRecov(); renderRecovery();
+    return st;
+  }
+  function importLoop(d){
+    let n = 0;
+    for (const x of d.sleep || []) {
+      const k = dkey(x.e), r = recov[k] = Object.assign(recov[k] || {}, {k});
+      let wake = 0, deep = 0, rem = 0; const ph = x.phases || [];
+      for (let i = 0; i < ph.length; i++) {
+        const dur = ((i + 1 < ph.length ? ph[i + 1][0] : (x.e - x.s) / 1000) - ph[i][0]) / 60;
+        if (ph[i][1] === 'WAKE') wake += dur; else if (ph[i][1] === 'NONREM3') deep += dur; else if (ph[i][1] === 'REM') rem += dur;
+      }
+      const sl = (x.e - x.s) / 60000 - wake;
+      r.p = Object.assign(r.p || {}, {s: x.s, e: x.e, sleep: Math.round(sl), deep: sl ? +(deep / sl * 100).toFixed(1) : null, rem: sl ? +(rem / sl * 100).toFixed(1) : null, temp: x.temp ?? null, tempDev: x.tempDev ?? null});
+      if (!r.s) { r.s = x.s; r.e = x.e; }
+      n++;
+    }
+    for (const x of d.recharge || []) {
+      if (!x.date) continue;
+      const r = recov[x.date] = Object.assign(recov[x.date] || {}, {k: x.date});
+      r.p = Object.assign(r.p || {}, {nrRmssd: x.rmssd, nrRhr: x.rri ? +(60000 / x.rri).toFixed(1) : null, resp: x.respInt ? +(60000 / x.respInt).toFixed(1) : null, ans: x.ans, recovery: x.recovery});
+    }
+    // RMSSD próprio a partir do PPI 24/7, dentro da janela de sono da Polar
+    for (const [k, r] of Object.entries(recov)) {
+      if (!r.p || !r.p.s) continue;
+      const segs = [], hrs = [];
+      for (const g of d.ppi || []) {
+        if (g.t < r.p.s || g.t > r.p.e) continue;
+        const v = cleanIbi(g.ppi.filter((x, i) => !g.err || (g.err[i] ?? 0) <= 20));
+        if (v.length >= 40) { const rm = rmssdOf(v); if (rm) { segs.push(rm); hrs.push(60000 / avg(v)); } }
+      }
+      if (segs.length) { const rm = median(segs); Object.assign(r.p, {rmssd: +rm.toFixed(1), ln: +Math.log(rm).toFixed(3), rhr: +Math.min(...hrs).toFixed(1), segs: segs.length}); }
+    }
+    saveRecov(); renderRecovery();
+    return n;
+  }
+  // melhor fonte da noite: relógio (IBI) > Polar Loop (PPI) > Nightly Recharge
+  function recPick(r){
+    const w = r.w || {}, p = r.p || {}, hc = nights[r.k] || {};
+    return {
+      ln: w.ln ?? p.ln ?? (p.nrRmssd ? +Math.log(p.nrRmssd).toFixed(3) : null),
+      rmssd: w.rmssd ?? p.rmssd ?? p.nrRmssd ?? null,
+      rhr: w.rhr ?? p.rhr ?? p.nrRhr ?? null,
+      temp: w.temp ?? p.temp ?? null, tempDev: p.tempDev ?? null,
+      resp: p.resp ?? hc.resp ?? null, spo2: hc.spo2 ?? null,
+      sleep: p.sleep ?? hc.sleep ?? null, deep: p.deep ?? hc.deep ?? null, rem: p.rem ?? hc.rem ?? null,
+      src: w.ln != null ? 'relógio (IBI)' : p.ln != null ? 'Polar Loop (PPI)' : p.nrRmssd ? 'Polar Nightly Recharge' : '—',
+      polarRecovery: p.recovery ?? null
+    };
+  }
+  function recZ(k, m){
+    const ks = Object.keys(recov).sort().filter(x => x < k).slice(-28);
+    const vals = ks.map(x => recPick(recov[x])[m]).filter(v => v != null);
+    const v = recov[k] && recPick(recov[k])[m];
+    if (v == null || vals.length < 5) return null;
+    const mu = avg(vals), sd = Math.max(Math.sqrt(avg(vals.map(x => (x - mu) ** 2))), m === 'ln' ? 0.05 : m === 'rhr' ? 1.5 : m === 'temp' ? 0.15 : m === 'resp' ? 0.3 : 1);
+    return {z: (v - mu) / sd, m: mu, n: vals.length};
+  }
+  function dayLoad(){
+    const by = {};
+    for (const w of workouts) { if (!w.hr) continue; const k = dkey(w.start); by[k] = (by[k] || 0) + (analyze(w).trimp || 0); }
+    const sum = days => { let s = 0; for (let i = 1; i <= days; i++) s += by[dkey(Date.now() - i * DAY)] || 0; return s; };
+    return {yest: Math.round(by[dkey(Date.now() - DAY)] || 0), a7: sum(7) / 7, a28: sum(28) / 28};
+  }
+  function recStatus(k){
+    const x = recPick(recov[k]), flags = [];
+    const zl = recZ(k, 'ln'), zr = recZ(k, 'rhr'), zt = recZ(k, 'temp'), zp = recZ(k, 'resp');
+    if (zl && zl.z <= -1) flags.push(`HRV abaixo da base (${zl.z.toFixed(1).replace('.', ',')} DP)`);
+    if (zr && zr.z >= 1) flags.push(`FC de repouso acima da base (+${zr.z.toFixed(1).replace('.', ',')} DP)`);
+    if (zt && Math.abs(zt.z) >= 1.5) flags.push(`temperatura da pele fora da base (${zt.z >= 0 ? '+' : ''}${zt.z.toFixed(1).replace('.', ',')} DP)`);
+    else if (x.tempDev != null && Math.abs(x.tempDev) >= 0.5) flags.push(`temperatura da pele ${x.tempDev >= 0 ? '+' : ''}${x.tempDev.toFixed(1).replace('.', ',')} °C vs base da Polar`);
+    if (zp && zp.z >= 1.5) flags.push(`respiração acima da base`);
+    if (x.sleep != null && x.sleep < 360) flags.push(`sono curto (${Math.floor(x.sleep / 60)}h${String(x.sleep % 60).padStart(2, '0')})`);
+    const level = !zl && !zr ? 'base' : flags.length >= 2 ? 'recuperar' : flags.length === 1 ? 'atencao' : 'pronto';
+    return {x, flags, level, zl, zr};
+  }
+  function renderRecovery(){
+    if (!NATIVE) return;
+    $('recCard').classList.remove('hidden');
+    renderLoopUI();
+    const ks = Object.keys(recov).sort().filter(k => { const x = recPick(recov[k]); return x.ln != null || x.rhr != null; });
+    if (!ks.length) { $('recBody').innerHTML = '<p class="msg">Sem noites com intervalos entre batimentos ainda. Use o modo noite do relógio ou sincronize a Polar Loop.</p>'; return; }
+    const k = ks[ks.length - 1], st = recStatus(k), x = st.x, L = dayLoad();
+    const lbl = {pronto: ['good', 'Pronto: marcadores dentro da sua base'], atencao: ['warn', 'Atenção: um marcador fora da base'], recuperar: ['bad', 'Recuperar: dois ou mais marcadores fora da base'], base: ['', `Linha de base em construção (${ks.length - 1} de 5 noites anteriores)`]}[st.level];
+    const f1 = v => v == null ? '--' : String(v).replace('.', ',');
+    $('recBody').innerHTML = `
+      <p class="status-line ${lbl[0]}">${new Date(k + 'T12:00').toLocaleDateString('pt-BR', {weekday: 'short', day: '2-digit', month: '2-digit'})} · ${lbl[1]}</p>
+      <div class="grid">
+        <div class="stat"><b>${x.rmssd != null ? Math.round(x.rmssd) : '--'}</b><span>RMSSD noite (ms)${st.zl ? '<br>base ' + Math.round(Math.exp(st.zl.m)) : ''}</span></div>
+        <div class="stat"><b>${x.rhr != null ? Math.round(x.rhr) : '--'}</b><span>FC repouso noite${st.zr ? '<br>base ' + Math.round(st.zr.m) : ''}</span></div>
+        <div class="stat"><b>${x.temp != null ? f1(x.temp.toFixed(1)) + '°' : x.tempDev != null ? (x.tempDev >= 0 ? '+' : '') + f1(x.tempDev.toFixed(1)) + '°' : '--'}</b><span>Temp. pele${x.temp == null && x.tempDev != null ? ' (Δ Polar)' : ''}</span></div>
+        <div class="stat"><b>${x.resp != null ? f1(x.resp.toFixed(1)) : '--'}</b><span>Respiração (rpm)</span></div>
+        <div class="stat"><b>${x.sleep != null ? Math.floor(x.sleep / 60) + 'h' + String(x.sleep % 60).padStart(2, '0') : '--'}</b><span>Sono</span></div>
+        <div class="stat"><b>${x.spo2 != null ? f1(x.spo2.toFixed(1)) + '%' : '--'}</b><span>SpO₂ (Samsung)</span></div>
+      </div>
+      ${st.flags.length ? `<p class="status-line bad" style="margin-top:6px">${st.flags.join('; ')}.</p>` : ''}
+      <p class="msg">Carga: ontem TRIMP ${L.yest} · média diária 7 d ${Math.round(L.a7)} vs 28 d ${Math.round(L.a28)}${L.a28 > 0 ? ` (${(L.a7 / L.a28).toFixed(2).replace('.', ',')}×)` : ''}. Fonte da HRV: ${x.src}${x.polarRecovery != null ? ` · Nightly Recharge da Polar: ${x.polarRecovery}` : ''}.</p>
+      <table class="rect"><tr><th>Noite</th><th>RMSSD</th><th>FC rep.</th><th>Sono</th><th></th></tr>${ks.slice(-7).reverse().map(kk => { const s2 = recStatus(kk), y = s2.x; return `<tr><td>${kk.slice(8)}/${kk.slice(5, 7)}</td><td>${y.rmssd != null ? Math.round(y.rmssd) : '--'}</td><td>${y.rhr != null ? Math.round(y.rhr) : '--'}</td><td>${y.sleep != null ? Math.floor(y.sleep / 60) + 'h' + String(y.sleep % 60).padStart(2, '0') : '--'}</td><td>${{pronto: '🟢', atencao: '🟡', recuperar: '🔴', base: '·'}[s2.level]}</td></tr>`; }).join('')}</table>
+      <p class="msg">Critérios: HRV (lnRMSSD) ≤ −1 DP ou FC de repouso ≥ +1 DP das 28 noites anteriores, temperatura ≥ 1,5 DP, sono &lt; 6 h. Base mínima de 5 noites. É o mesmo princípio do Recovery da WHOOP e do Nightly Recharge da Polar, com a sua própria base — não é a fórmula deles.</p>`;
+  }
+  // Polar Loop: interface
+  function renderLoopUI(){
+    if (!NATIVE || !NATIVE.loopStatus) return;
+    let st = {}; try { st = JSON.parse(NATIVE.loopStatus()); } catch (e) {}
+    const has = !!st.id;
+    $('loopPair').textContent = has ? 'Parear outra' : 'Parear Polar Loop';
+    $('loopSync').classList.toggle('hidden', !has); $('loopForget').classList.toggle('hidden', !has);
+    if (!$('loopMsg').dataset.busy) $('loopMsg').textContent = has ? `Pareada (${st.id}). A sincronização conecta, baixa sono, Nightly Recharge, temperatura e intervalos pulso a pulso, e desconecta. Feche o app Polar Flow antes, porque a pulseira atende um app por vez.` : 'Configure a pulseira primeiro no app Polar Flow; depois pareie aqui.';
+  }
+  function onLoop(d){
+    const m = $('loopMsg');
+    if (d.kind === 'status') { m.dataset.busy = d.state === 'scanning' || d.state === 'syncing' ? '1' : ''; if (m.dataset.busy) m.textContent = d.state === 'scanning' ? 'Procurando a Polar Loop…' : 'Sincronizando com a Polar Loop…'; else renderLoopUI(); }
+    else if (d.kind === 'paired') { m.dataset.busy = ''; renderLoopUI(); m.textContent = `Pareada: ${d.name}. Toque em Sincronizar.`; }
+    else if (d.kind === 'error') { m.dataset.busy = ''; m.innerHTML = `<span class="bad">${d.msg}</span>`; }
+    else if (d.kind === 'data') {
+      m.dataset.busy = '';
+      const n = importLoop(d), errs = Object.keys(d.errors || {});
+      m.textContent = `Sincronizado: ${n} noite(s) de sono, ${(d.recharge || []).length} Nightly Recharge, ${(d.ppi || []).length} blocos de intervalos pulso a pulso.` + (errs.length ? ` Sem: ${errs.join(', ')}.` : '');
+    }
+  }
+
+  // ---------- coach Claude ----------
+  const COACH_CTX0 = `Você é o coach de treino e recuperação do Henrique (41 anos, 1,70 m). Base: abordagem do livro Outlive (Peter Attia) — longevidade e capacidade funcional ("decatlo do centenário": andar, carregar peso, viajar sozinho, arrumar a casa).
+Metas: recomposição corporal (ganhar músculo, perder gordura dos flancos, em fases, sem pressa). Musculação 5x/semana (6:00–7:30, em jejum). Cardio todos os dias. Zona 2 definida pelo 1º limiar (DFA α1 ≥ 0,75), meta semanal de zona 2 configurada no app. 1 sessão 4×4 de VO2máx por semana (quinta), a 90–95% da FCmáx de 185. Teste guiado a cada 4–6 semanas.
+Regras: baseie-se nos dados; separe o que é dado do que é extrapolação; sem raciocínio subjetivo. Seja direto e curto (celular). Diga o que fazer hoje (tipo, intensidade, duração) e por quê, com números.`;
+  function coachSummary(){
+    const L = [], f1 = v => v == null ? '--' : (+v).toFixed(1).replace('.', ',');
+    const now = Date.now(), from = now - 14 * DAY;
+    L.push(`# Monitor H10 — resumo de ${new Date().toLocaleDateString('pt-BR')}`);
+    const zb = curZB();
+    L.push(`Perfil: FCmáx ${fcmax()} · FC repouso ${$('fcrep').value} · peso ${$('peso').value || '--'} kg · zonas (início) Z1 ${zb[0]} Z2 ${zb[1]} Z3 ${zb[2]} Z4 ${zb[3]} Z5 ${zb[4]} bpm · meta Z2 ${store.get('z2goal', '180')} min/sem`);
+    const lt = [...tests].reverse().find(t => t.res && t.res.vt1Ok);
+    if (lt) L.push(`Último teste guiado (${new Date(lt.end).toLocaleDateString('pt-BR')}, ${lt.mode}${lt.caf ? ', com cafeína' : ''}): VT1 ${Math.round(lt.res.vt1)} bpm${lt.res.vt1Load ? ' @ ' + f1(lt.res.vt1Load) : ''} · VT2 ${lt.res.vt2Ok ? Math.round(lt.res.vt2) + ' bpm' + (lt.res.vt2Load ? ' @ ' + f1(lt.res.vt2Load) : '') : 'não atingido'} · VO2 ${lt.res.vo2sub ? f1(lt.res.vo2sub.v) + ' (carga)' : lt.res.vo2uth ? f1(lt.res.vo2uth) + ' (razão FC)' : '--'}`);
+    L.push('\n## Noites (Recovery)');
+    const rk = Object.keys(recov).sort().filter(k => k >= dkey(from));
+    if (rk.length) for (const k of rk) { const s2 = recStatus(k), x = s2.x; L.push(`- ${k}: RMSSD ${x.rmssd != null ? Math.round(x.rmssd) : '--'} ms, FC rep ${x.rhr != null ? Math.round(x.rhr) : '--'}, sono ${x.sleep != null ? Math.floor(x.sleep / 60) + 'h' + String(x.sleep % 60).padStart(2, '0') : '--'}, resp ${f1(x.resp)}, temp ${x.temp != null ? f1(x.temp) : x.tempDev != null ? 'Δ' + f1(x.tempDev) : '--'} → ${s2.level}${s2.flags.length ? ' (' + s2.flags.join('; ') + ')' : ''}`); }
+    const nk = Object.keys(nights).sort().filter(k => k >= dkey(from));
+    if (nk.length) { L.push('Samsung (Health Connect):'); for (const k of nk) { const n = nights[k]; L.push(`- ${k}: sono ${n.sleep != null ? Math.floor(n.sleep / 60) + 'h' + String(n.sleep % 60).padStart(2, '0') : '--'}, FC média ${f1(n.hr)}, HRV ${f1(n.hrv)}, SpO2 ${f1(n.spo2)}, resp ${f1(n.resp)}`); } }
+    const rs = seriesFor('deitado').filter(p => p.t >= from);
+    if (rs.length) { L.push('\n## Medições de repouso (5 min, deitado)'); for (const p of rs) L.push(`- ${dkey(p.t)}: lnRMSSD ${p.ln != null ? p.ln.toFixed(2).replace('.', ',') : '--'}, FC ${p.hr != null ? Math.round(p.hr) : '--'}`); }
+    try { const r = readinessNow(); L.push(`Prontidão hoje (repouso): ${r.status}`); } catch (e) {}
+    L.push('\n## Treinos (14 dias)');
+    for (const w of workouts.filter(w => w.start >= from).sort((a, b) => a.start - b.start)) {
+      let a = null; try { a = analyze(w); } catch (e) {}
+      let line = `- ${new Date(w.start).toLocaleDateString('pt-BR', {weekday: 'short', day: '2-digit', month: '2-digit'})} ${tLbl(w)}: ${Math.round((w.end - w.start) / 60000)} min`;
+      if (a && a.n) line += `, FC ${Math.round(a.avg)}/${a.max}, min por zona ${a.zoneSec.map(z => Math.round(z / 60)).join('/')}, TRIMP ${Math.round(a.trimp)}`;
+      if (w.a1 && w.a1.length >= 6) line += `, α1≥0,75 em ${Math.round(w.a1.filter(p => p[1] >= 0.75).length / w.a1.length * 100)}%`;
+      if (w.iv && w.iv.res) line += `, 4×4 no alvo ${w.iv.res.filter(Boolean).map(r => r.sec ? Math.round(r.inT / r.sec * 100) + '%' : '--').join('/')}`;
+      if (w.indoor && w.indoor.dist) line += `, esteira ${(w.indoor.dist / 1000).toFixed(2).replace('.', ',')} km a ${String(w.indoor.grade).replace('.', ',')}%`;
+      if (w.gps && w.gps.dist) line += `, ${(w.gps.dist / 1000).toFixed(2).replace('.', ',')} km`;
+      if (w.fasted) line += ', em jejum';
+      L.push(line);
+    }
+    const L2 = dayLoad();
+    L.push(`Carga: média diária TRIMP 7 d ${Math.round(L2.a7)} vs 28 d ${Math.round(L2.a28)}.`);
+    return L.join('\n');
+  }
+  async function shareSummary(){
+    const md = coachSummary();
+    const name = `monitor-h10-${dkey(Date.now())}.md`;
+    const txt = 'Dados do Monitor H10 para o projeto Recomposição Corporal. Analise e me diga o que fazer hoje.\n\n' + md;
+    if (NATIVE && NATIVE.shareFiles) NATIVE.shareFiles(JSON.stringify([{name, content: txt, mime: 'text/plain'}]));
+    else { try { await navigator.clipboard.writeText(txt); toast('Resumo copiado.'); } catch (e) {} }
+  }
+  let coachHist = [];
+  try { coachHist = JSON.parse(localStorage.getItem('h10_coach_v1') || '[]') || []; } catch (e) {}
+  const saveCoach = () => { coachHist = coachHist.slice(-20); try { localStorage.setItem('h10_coach_v1', JSON.stringify(coachHist)); } catch (e) {} };
+  const escH = t => t.replace(/[&<>]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;'}[c])).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  function renderCoach(){ $('coachLog').innerHTML = coachHist.map(m => `<div class="cm ${m.role === 'user' ? 'u' : 'a'}">${escH(m.role === 'user' && m.brief ? 'Briefing de hoje' : m.content)}</div>`).join(''); }
+  const PRICE = {'claude-haiku-5-5': [0.10, 0.50], 'claude-sonnet-5-5': [2, 10], 'claude-opus-5-5': [4, 20]};
+  async function askCoach(text, brief){
+    const key = $('coachKey').value.trim();
+    if (!key) { $('coachCost').textContent = 'Informe a chave da API.'; return; }
+    coachHist.push({role: 'user', content: text, brief: !!brief}); saveCoach(); renderCoach();
+    $('coachCost').textContent = 'Consultando o coach…';
+    const model = $('coachModel').value;
+    try {
+      const r = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true'},
+        body: JSON.stringify({model, max_tokens: 1200,
+          system: [{type: 'text', text: $('coachCtx').value || COACH_CTX0}, {type: 'text', text: 'Dados atuais do app:\n' + coachSummary(), cache_control: {type: 'ephemeral'}}],
+          messages: coachHist.map(m => ({role: m.role, content: m.content}))})
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error && j.error.message || ('HTTP ' + r.status));
+      const out = (j.content || []).filter(c => c.type === 'text').map(c => c.text).join('\n');
+      coachHist.push({role: 'assistant', content: out}); saveCoach(); renderCoach();
+      const u = j.usage || {}, pr = PRICE[model] || [0, 0];
+      const cost = ((u.input_tokens || 0) * pr[0] + (u.cache_creation_input_tokens || 0) * pr[0] * 1.25 + (u.cache_read_input_tokens || 0) * pr[0] * 0.1 + (u.output_tokens || 0) * pr[1]) / 1e6;
+      const tot = (+store.get('coachSpent', '0') || 0) + cost; store.set('coachSpent', String(tot));
+      $('coachCost').textContent = `Custo estimado desta resposta: US$ ${cost.toFixed(4)} · acumulado: US$ ${tot.toFixed(2)}.`;
+    } catch (e) {
+      coachHist.pop(); saveCoach(); renderCoach();
+      $('coachCost').innerHTML = `<span class="bad">Falha: ${String(e.message || e)}</span>`;
+    }
+  }
+  function coachInit(){
+    $('coachKey').value = store.get('coachKey', '');
+    $('coachModel').value = store.get('coachModel', 'claude-sonnet-5-5');
+    $('coachCtx').value = store.get('coachCtx', '') || COACH_CTX0;
+    $('coachKey').addEventListener('change', () => store.set('coachKey', $('coachKey').value.trim()));
+    $('coachModel').addEventListener('change', () => store.set('coachModel', $('coachModel').value));
+    $('coachCtx').addEventListener('change', () => store.set('coachCtx', $('coachCtx').value));
+    $('coachShare').onclick = shareSummary;
+    $('coachCopy').onclick = async () => { try { await navigator.clipboard.writeText(coachSummary()); $('coachCost').textContent = 'Resumo copiado.'; } catch (e) {} };
+    $('coachBrief').onclick = () => askCoach('Faça o briefing de hoje: leia a recuperação da noite, a prontidão do repouso e a carga recente, e diga o que fazer hoje no cardio e na musculação (intensidade, duração, zona), e o que evitar.', true);
+    $('coachSend').onclick = () => { const t = $('coachIn').value.trim(); if (t) { $('coachIn').value = ''; askCoach(t); } };
+    $('coachClear').onclick = () => { coachHist = []; saveCoach(); renderCoach(); };
+    renderCoach();
+    const sp = +store.get('coachSpent', '0') || 0; if (sp) $('coachCost').textContent = `Gasto acumulado estimado: US$ ${sp.toFixed(2)}.`;
+  }
+  coachInit();
+
   // ---------- relógio (Galaxy Watch) ----------
   const WEAR_APK = 'https://github.com/henriquearaujocfp/H10-plus/releases/download/android-latest/h10plus-wear.apk';
   let wearImported = [];
@@ -2505,7 +2784,12 @@
         el.innerHTML = d.nodes ? `Relógio conectado (${(d.names || []).join(', ')}). ${d.app ? '<span class="good">App do relógio instalado.</span>' : 'App do relógio ainda não instalado.'}`
           : 'Nenhum relógio conectado ao celular agora.';
         break;
-      case 'session': importWear(d.json, d.path); break;
+      case 'session':
+        if (String(d.path || '').startsWith('/night/')) {
+          try { const o = JSON.parse(d.json); const st = importNightWatch(o); if (NATIVE.wearAck) NATIVE.wearAck(d.path);
+            toast(st ? `Noite importada do relógio: RMSSD ${Math.round(st.rmssd)} ms, FC de repouso ${Math.round(st.rhr)}.` : 'Noite importada, mas sem intervalos suficientes (o SDK da Samsung está no build?).'); } catch (e) {}
+        } else importWear(d.json, d.path);
+        break;
       case 'cmd': handleWearCmd(d.cmd); break;
       case 'live':
         wearLive = {...d, at: Date.now()};
@@ -2550,6 +2834,12 @@
       else if (!hcLoading) { hcLoading = true; renderNight(); NATIVE.hcRead(14); }
     });
     $('hcwBtn').onclick = () => NATIVE.hcRequest();
+    if (NATIVE.loopStatus) {
+      $('loopPair').onclick = () => NATIVE.loopPair();
+      $('loopSync').onclick = () => NATIVE.loopSync(7);
+      $('loopForget').onclick = () => { NATIVE.loopForget(); setTimeout(renderLoopUI, 300); };
+    }
+    renderRecovery();
     if (NATIVE.overlayStatus) {
       if (!wk) NATIVE.liveState('{"active":false}');
       renderBubbleCfg();
@@ -2611,6 +2901,7 @@
         case 'rec': onMem(d); break;
         case 'hc': onHc(d); break;
         case 'wear': onWear(d); break;
+        case 'loop': onLoop(d); break;
       }
     };
     // aviso de nova versão do APK (a parte web se atualiza sozinha)
@@ -3398,7 +3689,7 @@
   renderHistory();
 
   // ---------- app instalável (PWA) ----------
-  const APP_VERSION = '2026-11-26.2';
+  const APP_VERSION = '2026-11-26.3';
   $('appVer').textContent = APP_VERSION + (NATIVE ? ' · app Android ' + NATIVE.version() : '');
   nativeInit();
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
