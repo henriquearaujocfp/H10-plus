@@ -4,7 +4,7 @@ plugins {
 }
 
 def runNumber = (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()
-// SDK de sensores da Samsung: incluído só se o arquivo existir (não é redistribuído no repositório)
+// SDK de sensores da Samsung: incluído só se o arquivo existir (fica cifrado no repositório; o CI decifra com o segredo SAMSUNG_AAR_KEY)
 def samsungAar = file('libs/samsung-health-sensor-api.aar')
 def hasSamsung = samsungAar.exists()
 println("Samsung Health Sensor SDK: " + (hasSamsung ? "incluído" : "ausente"))
