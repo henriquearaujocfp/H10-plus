@@ -38,6 +38,7 @@ class NightService : Service(), NightSensors.Sink {
         @Volatile var ibiCount = 0
         @Volatile var lastHr = 0
         @Volatile var lastMsg = ""
+        @Volatile var auto = false
     }
 
     private val sensors = NightSensorsProvider.create()
@@ -54,7 +55,7 @@ class NightService : Service(), NightSensors.Sink {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> { stopAndSend(); return START_NOT_STICKY }
-            else -> if (!running) begin()
+            else -> if (!running) { auto = intent?.getBooleanExtra("auto", false) ?: false; begin() }
         }
         return START_STICKY
     }
@@ -99,7 +100,7 @@ class NightService : Service(), NightSensors.Sink {
         ui.removeCallbacks(autoStop)
         sensors.stop()
         val end = System.currentTimeMillis()
-        val json = JSONObject().put("v", 1).put("id", "nw$startMs").put("kind", "night").put("start", startMs).put("end", end)
+        val json = JSONObject().put("v", 1).put("auto", auto).put("id", "nw$startMs").put("kind", "night").put("start", startMs).put("end", end)
             .put("ibi", parse(ibi)).put("hr", parse(hr)).put("temp", parse(temp)).put("msg", lastMsg).toString()
         try {
             val dir = File(filesDir, "nights").apply { mkdirs() }

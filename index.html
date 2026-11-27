@@ -294,7 +294,9 @@
     <h2>Recovery</h2>
     <div id="recBody"><p class="msg">Sem noites gravadas ainda.</p></div>
     <h3 style="margin:14px 0 4px">Relógio: modo noite</h3>
-    <p class="msg">No app do relógio, toque em "🌙 Modo noite" ao deitar e em "☀ Encerrar noite" ao acordar. O relógio grava cada intervalo entre batimentos, a FC e a temperatura da pele e manda ao celular. Requer o SDK de sensores da Samsung no build e o modo desenvolvedor da Health Platform.</p>
+    <label class="chk"><input type="checkbox" id="nightAuto"> Gravar a noite automaticamente</label>
+    <div class="row" style="align-items:center;gap:8px"><label for="nightStart">das</label><input id="nightStart" type="time" value="22:00"><label for="nightEnd">às</label><input id="nightEnd" type="time" value="10:00"></div>
+    <p class="msg">O relógio grava cada intervalo entre batimentos, a FC e a temperatura da pele nessa janela, sem precisar ligar nada; o celular recorta a noite pelo início e fim do sono que o Samsung Health detecta (ou, se faltar, pelo trecho de FC mais baixa e estável). Depois de mudar aqui, abra uma vez o app do relógio para ele receber a janela. O botão "🌙 Modo noite" do relógio continua valendo para cochilos. Requer o modo desenvolvedor da Health Platform.</p>
     <h3 style="margin:14px 0 4px">Polar Loop</h3>
     <p id="loopMsg" class="msg"></p>
     <div class="row"><button id="loopPair">Parear Polar Loop</button><button id="loopSync" class="hidden primary">Sincronizar 7 dias</button><button id="loopForget" class="hidden">Esquecer</button></div>
@@ -2270,6 +2272,7 @@
     // mantém 180 noites
     const ks = Object.keys(nights).sort(); while (ks.length > 180) delete nights[ks.shift()];
     saveNights();
+    try { reprocessRawNights(); } catch (e) {}
   }
 
   // desvio da noite em relação às 28 noites anteriores (mínimo de 5)
@@ -2394,16 +2397,49 @@
     const rm = median(segs);
     return {rmssd: +rm.toFixed(1), ln: +Math.log(rm).toFixed(3), rhr: +Math.min(...hrs).toFixed(1), segs: segs.length};
   }
-  function importNightWatch(o){
-    const k = dkey(o.end);
+  // guarda o bruto das 2 últimas noites do relógio para recortar de novo quando o sono do Samsung chegar
+  const RAWKEY = 'h10_nightraw_v1';
+  function rawLoad(){ try { return JSON.parse(localStorage.getItem(RAWKEY) || '{}') || {}; } catch (e) { return {}; } }
+  function rawSave(k, o){
+    const raw = rawLoad();
+    const t0 = o.start, ibi = (o.ibi || []).filter(r => !r[2]);
+    raw[k] = {start: o.start, end: o.end, t: ibi.map(r => Math.round((r[0] - t0) / 1000)), v: ibi.map(r => r[1]), temp: (o.temp || []).map(r => [Math.round((r[0] - t0) / 1000), +(+r[1]).toFixed(2)])};
+    const ks = Object.keys(raw).sort(); while (ks.length > 2) delete raw[ks.shift()];
+    try { localStorage.setItem(RAWKEY, JSON.stringify(raw)); } catch (e) { try { localStorage.setItem(RAWKEY, JSON.stringify({[k]: raw[k]})); } catch (e2) {} }
+  }
+  // janela de sono estimada: maior trecho contínuo (tolerando 10 min de quebra) com FC de 5 min ≤ p10 + 12 bpm
+  function estimateSleep(ts, vs){
+    const bins = {};
+    for (let i = 0; i < ts.length; i++) { const b = Math.floor(ts[i] / 300000); (bins[b] = bins[b] || []).push(vs[i]); }
+    const keys = Object.keys(bins).map(Number).sort((a, b) => a - b).filter(b => bins[b].length >= 100);
+    if (keys.length < 12) return null;
+    const hr = keys.map(b => 60000 / avg(cleanIbi(bins[b]).length ? cleanIbi(bins[b]) : bins[b]));
+    const thr = pctl(hr, 0.1) + 12;
+    let best = null, cur = null, gap = 0;
+    keys.forEach((b, i) => {
+      if (hr[i] <= thr) { if (!cur || b - cur.e > 3) cur = {s: b, e: b}; else cur.e = b; gap = 0; if (!best || cur.e - cur.s > best.e - best.s) best = {...cur}; }
+    });
+    return best && (best.e - best.s) * 5 >= 180 ? {s: best.s * 300000, e: (best.e + 1) * 300000} : null;
+  }
+  function sliceNight(k, o){
     const hc = nights[k];
-    // janela de sono: a do Samsung Health quando existe; senão a gravação inteira menos os primeiros 30 min
-    const s = hc && hc.s ? Math.max(o.start, hc.s) : o.start + 30 * 60000, e = hc && hc.e ? Math.min(o.end, hc.e) : o.end;
+    const ts = (o.ibi || []).filter(r => !r[2]).map(r => r[0]), vs = (o.ibi || []).filter(r => !r[2]).map(r => r[1]);
+    let win = null, how;
+    if (hc && hc.s && hc.e && hc.e > o.start && hc.s < o.end) { win = {s: Math.max(o.start, hc.s), e: Math.min(o.end, hc.e)}; how = 'sono do Samsung Health'; }
+    else if ((win = estimateSleep(ts, vs))) how = 'janela estimada pela FC';
+    else { win = {s: o.start + 30 * 60000, e: o.end}; how = 'gravação inteira'; }
+    return {win, how};
+  }
+  function importNightWatch(o, fromRaw){
+    const k = dkey(o.end);
+    if (!fromRaw) rawSave(k, o);
+    const sl = sliceNight(k, o), s = sl.win.s, e = sl.win.e;
     const beats = (o.ibi || []).filter(r => r[0] >= s && r[0] <= e && !r[2]).map(r => r[1]);
     const st = nightStats(beats);
     const tw = (o.temp || []).filter(r => r[0] >= s && r[0] <= e && r[1] > 20).map(r => r[1]);
     const r = recov[k] = Object.assign(recov[k] || {}, {k, s, e});
-    r.w = st ? Object.assign(st, {temp: tw.length ? +median(tw).toFixed(2) : null, beats: beats.length}) : {beats: beats.length, temp: tw.length ? +median(tw).toFixed(2) : null};
+    r.w = Object.assign(st || {}, {temp: tw.length ? +median(tw).toFixed(2) : null, beats: beats.length, how: sl.how, auto: !!o.auto});
+    if (sl.how !== 'sono do Samsung Health') r.s = s, r.e = e;
     saveRecov(); renderRecovery();
     return st;
   }
@@ -2441,6 +2477,17 @@
     return n;
   }
   // melhor fonte da noite: relógio (IBI) > Polar Loop (PPI) > Nightly Recharge
+  // quando o sono do Samsung chega depois, recorta de novo as noites que ficaram com janela estimada
+  function reprocessRawNights(){
+    const raw = rawLoad();
+    for (const [k, x] of Object.entries(raw)) {
+      const r = recov[k];
+      if (r && r.w && r.w.how === 'sono do Samsung Health') continue;
+      if (!nights[k]) continue;
+      const o = {start: x.start, end: x.end, ibi: x.t.map((t, i) => [x.start + t * 1000, x.v[i], 0]), temp: x.temp.map(p => [x.start + p[0] * 1000, p[1], 0])};
+      importNightWatch(o, true);
+    }
+  }
   function recPick(r){
     const w = r.w || {}, p = r.p || {}, hc = nights[r.k] || {};
     return {
@@ -2500,7 +2547,7 @@
         <div class="stat"><b>${x.spo2 != null ? f1(x.spo2.toFixed(1)) + '%' : '--'}</b><span>SpO₂ (Samsung)</span></div>
       </div>
       ${st.flags.length ? `<p class="status-line bad" style="margin-top:6px">${st.flags.join('; ')}.</p>` : ''}
-      <p class="msg">Carga: ontem TRIMP ${L.yest} · média diária 7 d ${Math.round(L.a7)} vs 28 d ${Math.round(L.a28)}${L.a28 > 0 ? ` (${(L.a7 / L.a28).toFixed(2).replace('.', ',')}×)` : ''}. Fonte da HRV: ${x.src}${x.polarRecovery != null ? ` · Nightly Recharge da Polar: ${x.polarRecovery}` : ''}.</p>
+      <p class="msg">${recov[k].w && recov[k].w.how ? `Janela usada: ${recov[k].w.how}${recov[k].w.auto ? ' (noite automática)' : ''}. ` : ''}Carga: ontem TRIMP ${L.yest} · média diária 7 d ${Math.round(L.a7)} vs 28 d ${Math.round(L.a28)}${L.a28 > 0 ? ` (${(L.a7 / L.a28).toFixed(2).replace('.', ',')}×)` : ''}. Fonte da HRV: ${x.src}${x.polarRecovery != null ? ` · Nightly Recharge da Polar: ${x.polarRecovery}` : ''}.</p>
       <table class="rect"><tr><th>Noite</th><th>RMSSD</th><th>FC rep.</th><th>Sono</th><th></th></tr>${ks.slice(-7).reverse().map(kk => { const s2 = recStatus(kk), y = s2.x; return `<tr><td>${kk.slice(8)}/${kk.slice(5, 7)}</td><td>${y.rmssd != null ? Math.round(y.rmssd) : '--'}</td><td>${y.rhr != null ? Math.round(y.rhr) : '--'}</td><td>${y.sleep != null ? Math.floor(y.sleep / 60) + 'h' + String(y.sleep % 60).padStart(2, '0') : '--'}</td><td>${{pronto: '🟢', atencao: '🟡', recuperar: '🔴', base: '·'}[s2.level]}</td></tr>`; }).join('')}</table>
       <p class="msg">Critérios: HRV (lnRMSSD) ≤ −1 DP ou FC de repouso ≥ +1 DP das 28 noites anteriores, temperatura ≥ 1,5 DP, sono &lt; 6 h. Base mínima de 5 noites. É o mesmo princípio do Recovery da WHOOP e do Nightly Recharge da Polar, com a sua própria base — não é a fórmula deles.</p>`;
   }
@@ -2686,7 +2733,8 @@ Regras: baseie-se nos dados; separe o que é dado do que é extrapolação; sem 
   function pushWearConfig(){
     pushWidget();
     if (!NATIVE || !NATIVE.wearConfig) return;
-    try { NATIVE.wearConfig(JSON.stringify({zb: curZB(), fcmax: fcmax()})); } catch (e) {}
+    const night = {auto: store.get('nightAuto', '0') === '1', start: store.get('nightStart', '22:00'), end: store.get('nightEnd', '10:00')};
+    try { NATIVE.wearConfig(JSON.stringify({zb: curZB(), fcmax: fcmax(), night})); } catch (e) {}
   }
   function wearSync(){
     if (!NATIVE || !NATIVE.wearSync) return;
@@ -2834,6 +2882,10 @@ Regras: baseie-se nos dados; separe o que é dado do que é extrapolação; sem 
       else if (!hcLoading) { hcLoading = true; renderNight(); NATIVE.hcRead(14); }
     });
     $('hcwBtn').onclick = () => NATIVE.hcRequest();
+    $('nightAuto').checked = store.get('nightAuto', '0') === '1';
+    $('nightStart').value = store.get('nightStart', '22:00'); $('nightEnd').value = store.get('nightEnd', '10:00');
+    const nightCfg = () => { store.set('nightAuto', $('nightAuto').checked ? '1' : '0'); store.set('nightStart', $('nightStart').value || '22:00'); store.set('nightEnd', $('nightEnd').value || '10:00'); pushWearConfig(); };
+    ['nightAuto', 'nightStart', 'nightEnd'].forEach(id => $(id).addEventListener('change', nightCfg));
     if (NATIVE.loopStatus) {
       $('loopPair').onclick = () => NATIVE.loopPair();
       $('loopSync').onclick = () => NATIVE.loopSync(7);
@@ -3689,7 +3741,7 @@ Regras: baseie-se nos dados; separe o que é dado do que é extrapolação; sem 
   renderHistory();
 
   // ---------- app instalável (PWA) ----------
-  const APP_VERSION = '2026-11-26.3';
+  const APP_VERSION = '2026-11-26.4';
   $('appVer').textContent = APP_VERSION + (NATIVE ? ' · app Android ' + NATIVE.version() : '');
   nativeInit();
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

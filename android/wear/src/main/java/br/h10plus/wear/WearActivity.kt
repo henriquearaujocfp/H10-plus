@@ -87,9 +87,28 @@ class WearActivity : ComponentActivity() {
         })
     }
 
+    private val bgPerm = registerForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        if (!ok) WorkoutState.message = "Para a noite automática, permita \"Sensores do corpo\" o tempo todo."
+    }
     private val nightPerm = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { res ->
-        if (checkSelfPermission(android.Manifest.permission.BODY_SENSORS) == android.content.pm.PackageManager.PERMISSION_GRANTED) startNight()
-        else WorkoutState.message = "Permita \"Sensores do corpo\" para o modo noite."
+        if (checkSelfPermission(android.Manifest.permission.BODY_SENSORS) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            startNight()
+            askBackgroundSensors()
+        } else WorkoutState.message = "Permita \"Sensores do corpo\" para o modo noite."
+    }
+    private val autoPerm = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { askBackgroundSensors() }
+    private fun ensureAutoPerms() {
+        if (checkSelfPermission(android.Manifest.permission.BODY_SENSORS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
+            autoPerm.launch(arrayOf(android.Manifest.permission.BODY_SENSORS, android.Manifest.permission.ACTIVITY_RECOGNITION,
+                "com.samsung.android.hardware.sensormanager.permission.READ_ADDITIONAL_HEALTH_DATA"))
+        else askBackgroundSensors()
+    }
+    /** A noite automática começa com o app fechado: precisa de "Sensores do corpo" o tempo todo. */
+    private fun askBackgroundSensors() {
+        if (android.os.Build.VERSION.SDK_INT >= 33 && NightScheduler.cfg(this).auto &&
+            checkSelfPermission(android.Manifest.permission.BODY_SENSORS) == android.content.pm.PackageManager.PERMISSION_GRANTED &&
+            checkSelfPermission("android.permission.BODY_SENSORS_BACKGROUND") != android.content.pm.PackageManager.PERMISSION_GRANTED)
+            ui.postDelayed({ try { bgPerm.launch("android.permission.BODY_SENSORS_BACKGROUND") } catch (_: Exception) { } }, 800)
     }
 
     private fun toggleNight() {
@@ -384,6 +403,8 @@ class WearActivity : ComponentActivity() {
                             val json = DataMapItem.fromDataItem(item).dataMap.getString("json") ?: continue
                             getSharedPreferences("cfg", MODE_PRIVATE).edit().putString("json", json).apply()
                             WorkoutState.applyConfig(json)
+                            NightScheduler.apply(this@WearActivity, startNowIfInside = true)
+                            if (NightScheduler.cfg(this@WearActivity).auto) ensureAutoPerms()
                         }
                     }
                 } finally { buf.release() }
@@ -440,7 +461,9 @@ class WearActivity : ComponentActivity() {
                 tvNight.text = "Gravando ${h / 60}h${"%02d".format(h % 60)} · ${NightService.ibiCount} batimentos" + (if (NightService.lastHr > 0) " · FC ${NightService.lastHr}" else "") + (if (NightService.lastMsg.isNotEmpty()) "\n" + NightService.lastMsg else "")
             } else {
                 btnNight.text = "🌙 Modo noite"
-                tvNight.text = NightService.lastMsg
+                val nc = NightScheduler.cfg(this)
+                tvNight.text = (if (nc.auto) "Automática: %02d:%02d–%02d:%02d".format(nc.start / 60, nc.start % 60, nc.end / 60, nc.end % 60) else "") +
+                    (if (NightService.lastMsg.isNotEmpty()) (if (nc.auto) "\n" else "") + NightService.lastMsg else "")
             }
             tvMsg.text = st.message
             return
